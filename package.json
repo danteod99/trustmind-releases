@@ -47,6 +47,8 @@
       "dist/**/*",
       "src/db/**/*",
       "src/browser/**/*",
+      "src/auth/**/*",
+      "src/payments/**/*",
       "src/extensions/**/*"
     ],
     "publish": {

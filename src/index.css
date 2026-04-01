@@ -48,17 +48,17 @@ body {
   color: #8892a4 !important;
 }
 
-/* ─── Accent buttons with glow ──────────────────────────────────── */
+/* ─── Accent buttons with Instagram glow ────────────────────────── */
 
 .bg-trust-accent {
-  background: #4d7cff !important;
-  box-shadow: 0 0 16px rgba(77, 124, 255, 0.25), 0 2px 8px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, #F58529, #DD2A7B, #8134AF) !important;
+  box-shadow: 0 0 16px rgba(225, 48, 108, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .bg-trust-accent:hover,
 .hover\:bg-trust-accent-hover:hover {
-  background: #6b93ff !important;
-  box-shadow: 0 0 24px rgba(77, 124, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, #F77737, #E1306C, #933BAE) !important;
+  box-shadow: 0 0 24px rgba(225, 48, 108, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* ─── Green, Red, Yellow with glow ──────────────────────────────── */
@@ -84,8 +84,8 @@ input::placeholder, textarea::placeholder {
 }
 
 input:focus, select:focus, textarea:focus {
-  border-color: rgba(77, 124, 255, 0.5) !important;
-  box-shadow: 0 0 0 2px rgba(77, 124, 255, 0.15), 0 0 12px rgba(77, 124, 255, 0.1) !important;
+  border-color: rgba(225, 48, 108, 0.5) !important;
+  box-shadow: 0 0 0 2px rgba(225, 48, 108, 0.15), 0 0 12px rgba(225, 48, 108, 0.1) !important;
 }
 
 /* ─── Rounded cards — glass panels ──────────────────────────────── */
@@ -133,7 +133,7 @@ tr:hover, .hover\:bg-trust-surface:hover {
 
 .bg-trust-accent\/10,
 .bg-trust-accent\/5 {
-  background: rgba(77, 124, 255, 0.1) !important;
+  background: rgba(225, 48, 108, 0.1) !important;
 }
 
 .bg-gray-100 {
@@ -147,9 +147,9 @@ tr:hover, .hover\:bg-trust-surface:hover {
   border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Active tab in sidebar — cyan glow */
+/* Active tab in sidebar — Instagram glow */
 .bg-trust-accent.text-white {
-  box-shadow: 0 0 16px rgba(77, 124, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 16px rgba(225, 48, 108, 0.35), 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 /* Sidebar hover */
@@ -179,8 +179,8 @@ tr:hover, .hover\:bg-trust-surface:hover {
 /* ─── Animations ────────────────────────────────────────────────── */
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(77, 124, 255, 0.2); }
-  50% { box-shadow: 0 0 20px rgba(77, 124, 255, 0.4); }
+  0%, 100% { box-shadow: 0 0 8px rgba(225, 48, 108, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(225, 48, 108, 0.4); }
 }
 
 .animate-glow {
@@ -194,7 +194,7 @@ tr:hover, .hover\:bg-trust-surface:hover {
 }
 
 .bg-trust-accent.h-full {
-  box-shadow: 0 0 8px rgba(77, 124, 255, 0.4);
+  box-shadow: 0 0 8px rgba(225, 48, 108, 0.4);
 }
 
 /* ─── Modals & overlays ─────────────────────────────────────────── */

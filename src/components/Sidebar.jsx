@@ -72,7 +72,7 @@ export default function Sidebar({ activeTab, setActiveTab, tabs, tier, user, onL
       <div className="p-5 border-b border-white/10">
         <h1 className="text-xl font-bold">
           <span className="text-white">Trust</span>
-          <span className="text-trust-accent-light">Insta</span>
+          <span className="bg-gradient-to-r from-[#F58529] via-[#DD2A7B] to-[#8134AF] bg-clip-text text-transparent">Insta</span>
         </h1>
         <p className="text-white/40 text-xs mt-1">Instagram Manager v1.0.0</p>
       </div>

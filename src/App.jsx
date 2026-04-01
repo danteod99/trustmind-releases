@@ -84,7 +84,7 @@ export default function App() {
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">
             <span className="text-white">Trust</span>
-            <span className="text-trust-accent-light">Insta</span>
+            <span className="bg-gradient-to-r from-[#F58529] via-[#DD2A7B] to-[#8134AF] bg-clip-text text-transparent">Insta</span>
           </h1>
           <p className="text-white/40 text-sm">Cargando...</p>
         </div>
