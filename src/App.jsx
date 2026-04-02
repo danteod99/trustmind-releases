@@ -95,7 +95,7 @@ export default function App() {
   // Auth screens
   if (!user) {
     if (authView === 'register') {
-      return <RegisterScreen onSwitchToLogin={() => setAuthView('login')} />;
+      return <RegisterScreen onSwitchToLogin={() => setAuthView('login')} onLogin={handleLogin} />;
     }
     return <LoginScreen onLogin={handleLogin} onSwitchToRegister={() => setAuthView('register')} />;
   }

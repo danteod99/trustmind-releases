@@ -31,39 +31,45 @@ async function getCurrentTier(supabase, userId) {
   }
 
   try {
+    // Check for active subscriptions: trustinsta, trustface, or bundle
     const { data, error } = await supabase
       .from('tm_subscriptions')
-      .select('tier, expires_at')
+      .select('tier, product, expires_at')
       .eq('user_id', userId)
-      .eq('tier', 'pro')
-      .order('expires_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .in('tier', ['pro'])
+      .order('expires_at', { ascending: false });
 
     if (error) {
       console.error('[Licencia] Error al consultar suscripcion:', error.message);
       return _fallbackToFree(userId);
     }
 
-    if (!data) {
+    if (!data || data.length === 0) {
       console.log('[Licencia] No se encontro suscripcion activa. Tier: free');
       _updateCache(userId, 'free');
       return 'free';
     }
 
-    // Verificar si no ha expirado
     const now = new Date();
-    const expiresAt = new Date(data.expires_at);
-    if (expiresAt < now) {
-      console.log('[Licencia] La suscripcion ha expirado. Tier: free');
+    // Find any valid subscription for this app or bundle
+    const APP_ID = 'trustinsta'; // This app's product identifier
+    const validSub = data.find(sub => {
+      const expiresAt = new Date(sub.expires_at);
+      if (expiresAt < now) return false;
+      // Accept: matching product, bundle, or legacy (no product field = all apps)
+      const product = (sub.product || '').toLowerCase();
+      return !product || product === APP_ID || product === 'bundle' || product === 'all';
+    });
+
+    if (!validSub) {
+      console.log('[Licencia] No hay suscripcion valida para esta app. Tier: free');
       _updateCache(userId, 'free');
       return 'free';
     }
 
-    const tier = data.tier === 'pro' ? 'pro' : 'free';
-    console.log(`[Licencia] Tier obtenido desde Supabase: ${tier}`);
-    _updateCache(userId, tier);
-    return tier;
+    console.log(`[Licencia] Tier obtenido desde Supabase: pro (producto: ${validSub.product || 'legacy'})`);
+    _updateCache(userId, 'pro');
+    return 'pro';
   } catch (err) {
     console.error('[Licencia] Error de red al consultar tier:', err.message);
     return _fallbackToFree(userId);

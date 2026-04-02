@@ -338,6 +338,122 @@ ipcMain.handle('auth:login', async (_, email, password) => {
   }
 });
 
+ipcMain.handle('auth:google', async () => {
+  try {
+    const { SUPABASE_URL, SUPABASE_ANON_KEY } = require('./src/auth/supabase');
+
+    // Build the Google OAuth URL via Supabase
+    const redirectUrl = 'http://localhost:54321/auth/callback';
+    const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
+
+    // Open a new window for Google login
+    const authWindow = new BrowserWindow({
+      width: 500,
+      height: 700,
+      show: true,
+      webPreferences: { nodeIntegration: false, contextIsolation: true },
+    });
+
+    authWindow.loadURL(authUrl);
+
+    return new Promise((resolve) => {
+      // Listen for the redirect with the tokens
+      authWindow.webContents.on('will-redirect', async (event, url) => {
+        if (url.startsWith(redirectUrl) || url.includes('access_token') || url.includes('#access_token')) {
+          event.preventDefault();
+          authWindow.close();
+
+          try {
+            // Extract tokens from URL fragment
+            const hashParams = new URL(url.replace('#', '?')).searchParams;
+            const access_token = hashParams.get('access_token');
+            const refresh_token = hashParams.get('refresh_token');
+
+            if (!access_token) {
+              resolve({ error: 'No se obtuvo token de Google' });
+              return;
+            }
+
+            // Set the session in Supabase
+            const supabase = getSupabase();
+            const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
+            if (error) { resolve({ error: error.message }); return; }
+
+            const user = data.user;
+            const session = data.session;
+            saveSession({ access_token: session.access_token, refresh_token: session.refresh_token, user });
+
+            // Register device
+            const fingerprint = getDeviceFingerprint();
+            const deviceName = getDeviceName();
+            await registerDevice(supabase, user.id, fingerprint, deviceName);
+
+            // Get tier
+            const db = getDb();
+            const tier = await getCurrentTier(supabase, user.id);
+            saveTierCache(db, user.id, tier, null);
+            currentUser = user;
+            cachedTier = tier;
+            startTierRevalidation();
+
+            if (mainWindow) mainWindow.webContents.send('auth:state-change', { user: { id: user.id, email: user.email }, tier });
+            resolve({ user: { id: user.id, email: user.email }, tier });
+          } catch (err) {
+            resolve({ error: err.message });
+          }
+        }
+      });
+
+      // Also handle navigation (some OAuth flows use navigation instead of redirect)
+      authWindow.webContents.on('will-navigate', async (event, url) => {
+        if (url.includes('access_token') || url.includes('#access_token') || url.startsWith(redirectUrl)) {
+          event.preventDefault();
+          authWindow.close();
+
+          try {
+            const hashParams = new URL(url.replace('#', '?')).searchParams;
+            const access_token = hashParams.get('access_token');
+            const refresh_token = hashParams.get('refresh_token');
+
+            if (!access_token) { resolve({ error: 'No se obtuvo token de Google' }); return; }
+
+            const supabase = getSupabase();
+            const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
+            if (error) { resolve({ error: error.message }); return; }
+
+            const user = data.user;
+            const session = data.session;
+            saveSession({ access_token: session.access_token, refresh_token: session.refresh_token, user });
+
+            const fingerprint = getDeviceFingerprint();
+            const deviceName = getDeviceName();
+            await registerDevice(supabase, user.id, fingerprint, deviceName);
+
+            const db = getDb();
+            const tier = await getCurrentTier(supabase, user.id);
+            saveTierCache(db, user.id, tier, null);
+            currentUser = user;
+            cachedTier = tier;
+            startTierRevalidation();
+
+            if (mainWindow) mainWindow.webContents.send('auth:state-change', { user: { id: user.id, email: user.email }, tier });
+            resolve({ user: { id: user.id, email: user.email }, tier });
+          } catch (err) {
+            resolve({ error: err.message });
+          }
+        }
+      });
+
+      // Handle window close without completing
+      authWindow.on('closed', () => {
+        resolve({ error: 'Login cancelado' });
+      });
+    });
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('auth:register', async (_, email, password) => {
   try {
     const supabase = getSupabase();
