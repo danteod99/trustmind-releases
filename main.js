@@ -1,7 +1,29 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const https = require('https');
 const path = require('path');
+const fs = require('fs');
+
+// Load .env file for secrets
+function loadEnv() {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    const content = fs.readFileSync(envPath, 'utf-8');
+    for (const line of content.split('\n')) {
+      const [key, ...rest] = line.split('=');
+      if (key && rest.length) process.env[key.trim()] = rest.join('=').trim();
+    }
+  } catch { /* .env not found, use process.env */ }
+}
+loadEnv();
+
+// ─── Security: Anti-debugging & tamper detection ───────────────────
+if (app.isPackaged) {
+  app.on('browser-window-created', (_, win) => {
+    win.webContents.on('devtools-opened', () => { win.webContents.closeDevTools(); });
+  });
+  app.commandLine.appendSwitch('disable-features', 'DebugMode');
+}
 const { initDatabase, getDb } = require('./src/db/database');
 const { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey } = require('./src/browser/manager');
 const {
@@ -228,17 +250,26 @@ app.whenReady().then(() => {
 
   createWindow();
 
+  // App version
+  ipcMain.handle('app:version', () => app.getVersion());
+
   // Auto-Updater
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('update-available', (info) => { if (mainWindow) mainWindow.webContents.send('updater:update-available', { version: info.version }); });
   autoUpdater.on('download-progress', (progress) => { if (mainWindow) mainWindow.webContents.send('updater:download-progress', { percent: progress.percent }); });
   autoUpdater.on('update-downloaded', (info) => { if (mainWindow) mainWindow.webContents.send('updater:update-downloaded', { version: info.version }); });
-  autoUpdater.on('error', (err) => { console.error('Updater error:', err.message); });
+  autoUpdater.on('error', (err) => { console.error('Updater error:', err.message); if (mainWindow) mainWindow.webContents.send('updater:error', { error: err.message }); });
   if (app.isPackaged) { setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000); }
   ipcMain.handle('updater:check', async () => { try { const r = await autoUpdater.checkForUpdates(); return { success: true, updateInfo: r?.updateInfo }; } catch (e) { return { success: false, error: e.message }; } });
   ipcMain.handle('updater:download', async () => { try { await autoUpdater.downloadUpdate(); return { success: true }; } catch (e) { return { success: false, error: e.message }; } });
-  ipcMain.handle('updater:install', () => { autoUpdater.quitAndInstall(false, true); });
+  ipcMain.handle('updater:install', () => {
+    // Force quit on macOS — prevent app from blocking the restart
+    app.removeAllListeners('window-all-closed');
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach((w) => w.destroy());
+    autoUpdater.quitAndInstall(false, true);
+  });
 
   // Start the background scheduler executor
   startSchedulerExecutor();
@@ -636,6 +667,10 @@ function decryptProfile(profile) {
   for (const f of PROFILE_SENSITIVE) { if (dec[f]) dec[f] = decryptField(dec[f]) || dec[f]; }
   return dec;
 }
+
+ipcMain.handle('open-external', (_, url) => {
+  if (typeof url === 'string' && url.startsWith('https://')) shell.openExternal(url);
+});
 
 ipcMain.handle('profiles:list', () => {
   const db = getDb();

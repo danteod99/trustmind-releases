@@ -402,7 +402,26 @@ export default function Automations({ tier, onUpgrade }) {
   const toggleProfile = (id) => {
     setSelectedProfiles((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
   };
-  const selectAll = () => setSelectedProfiles(activeProfiles.map((p) => p.id));
+  const selectAll = () => setSelectedProfiles(profiles.map((p) => p.id));
+
+  /** Ensure browsers are open for selected profiles, launching any that aren't */
+  const ensureBrowsersOpen = async (profileIds) => {
+    const status = await window.api.getBrowserStatus().catch(() => []);
+    const needLaunch = profileIds.filter((id) => !status.includes(id));
+    if (needLaunch.length > 0) {
+      addLog(`Abriendo ${needLaunch.length} navegador(es)...`, 'info');
+      for (const id of needLaunch) {
+        try {
+          await window.api.launchBrowser(id);
+          addLog(`Navegador abierto para ${profiles.find((p) => p.id === id)?.name || id}`, 'info');
+        } catch (err) {
+          addLog(`Error abriendo navegador para ${profiles.find((p) => p.id === id)?.name || id}: ${err?.message || err}`, 'error');
+        }
+      }
+      // Small wait for browsers to initialize
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  };
 
   // ---- Simple mode execution ----
   const handleRunSimple = async () => {
@@ -410,6 +429,9 @@ export default function Automations({ tier, onUpgrade }) {
     setRunning(true);
     cancelledRef.current = false;
     addLog(`Ejecutando ${selectedAction.name} en ${selectedProfiles.length} perfil(es)...`, 'start');
+
+    await ensureBrowsersOpen(selectedProfiles);
+    if (cancelledRef.current) { setRunning(false); return; }
 
     const promises = selectedProfiles.map((pid) => executeAction(pid, selectedAction.id, config));
     const results = await Promise.allSettled(promises);
@@ -424,6 +446,9 @@ export default function Automations({ tier, onUpgrade }) {
     setRunning(true);
     cancelledRef.current = false;
     addLog(`Iniciando pipeline "${pipelineName || 'Sin nombre'}" con ${pipelineSteps.length} paso(s) en ${selectedProfiles.length} perfil(es)`, 'start');
+
+    await ensureBrowsersOpen(selectedProfiles);
+    if (cancelledRef.current) { setRunning(false); return; }
 
     for (let i = 0; i < pipelineSteps.length; i++) {
       if (cancelledRef.current) break;
@@ -592,32 +617,41 @@ export default function Automations({ tier, onUpgrade }) {
         <div className="w-64 flex flex-col shrink-0">
           <div className="bg-white border border-trust-border rounded-xl p-4 shadow-trust">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-trust-dark">Perfiles Activos</h3>
-              {activeProfiles.length > 0 && (
+              <h3 className="text-sm font-semibold text-trust-dark">Perfiles</h3>
+              {profiles.length > 0 && (
                 <button onClick={selectAll} className="text-xs text-trust-accent font-medium hover:text-trust-accent-hover">Todos</button>
               )}
             </div>
-            {activeProfiles.length === 0 ? (
-              <p className="text-xs text-trust-muted py-4 text-center">Abre navegadores primero</p>
+            {profiles.length === 0 ? (
+              <p className="text-xs text-trust-muted py-4 text-center">No hay perfiles creados</p>
             ) : (
               <div className="space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto">
-                {activeProfiles.map((p) => (
-                  <label
-                    key={p.id}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
-                      selectedProfiles.includes(p.id)
-                        ? 'bg-trust-accent/5 border border-trust-accent/30 shadow-sm'
-                        : 'hover:bg-trust-surface border border-transparent'
-                    }`}
-                  >
-                    <input type="checkbox" checked={selectedProfiles.includes(p.id)} onChange={() => toggleProfile(p.id)} className="accent-trust-accent w-4 h-4" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-trust-dark font-medium truncate">{p.name}</div>
-                      {p.ig_user && <div className="text-xs text-trust-muted">@{p.ig_user}</div>}
-                    </div>
-                    {autoStatus[p.id] && <span className="w-2 h-2 rounded-full bg-trust-yellow animate-pulse" />}
-                  </label>
-                ))}
+                {profiles.map((p) => {
+                  const isActive = runningIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
+                        selectedProfiles.includes(p.id)
+                          ? 'bg-trust-accent/5 border border-trust-accent/30 shadow-sm'
+                          : 'hover:bg-trust-surface border border-transparent'
+                      }`}
+                    >
+                      <input type="checkbox" checked={selectedProfiles.includes(p.id)} onChange={() => toggleProfile(p.id)} className="accent-trust-accent w-4 h-4" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-trust-dark font-medium truncate">{p.name}</div>
+                        {p.ig_user && <div className="text-xs text-trust-muted">@{p.ig_user}</div>}
+                      </div>
+                      {autoStatus[p.id] ? (
+                        <span className="w-2 h-2 rounded-full bg-trust-yellow animate-pulse" title="Automatizacion en curso" />
+                      ) : isActive ? (
+                        <span className="w-2 h-2 rounded-full bg-green-500" title="Navegador abierto" />
+                      ) : (
+                        <span className="w-2 h-2 rounded-full bg-trust-border" title="Navegador cerrado" />
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             )}
             {selectedProfiles.length > 0 && (

@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  // External links
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
   // Profiles
   listProfiles: () => ipcRenderer.invoke('profiles:list'),
   createProfile: (profile) => ipcRenderer.invoke('profiles:create', profile),
@@ -135,6 +138,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // AI Generation
   generateAIText: (provider, apiKey, prompt) => ipcRenderer.invoke('ai:generate-text', provider, apiKey, prompt),
+
+  // App info
+  getVersion: () => ipcRenderer.invoke('app:version'),
 
   // Auto-Updater
   checkForUpdate: () => ipcRenderer.invoke('updater:check'),
