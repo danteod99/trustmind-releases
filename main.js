@@ -487,10 +487,31 @@ ipcMain.handle('auth:google', async () => {
 
 ipcMain.handle('auth:register', async (_, email, password) => {
   try {
+    // Use server endpoint to create user with auto-confirmed email
+    const https = require('https');
+    const res = await fetch('https://www.trustmind.online/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) return { error: result.error || 'Error al registrar' };
+
+    // Auto-login after successful registration
     const supabase = getSupabase();
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return { error: error.message };
-    return { success: true, message: 'Revisa tu correo para verificar tu cuenta' };
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    if (loginError) return { success: true, message: 'Cuenta creada. Inicia sesión.' };
+
+    // Save session and register device
+    if (loginData.session) {
+      saveSession(loginData.session);
+      currentUser = loginData.user;
+      const fingerprint = await getDeviceFingerprint();
+      const deviceName = getDeviceName();
+      await registerDevice(supabase, loginData.user.id, fingerprint, deviceName);
+    }
+
+    return { success: true, autoLogin: true, user: loginData.user, tier: 'free' };
   } catch (err) {
     return { error: err.message };
   }

@@ -54,6 +54,8 @@ export default function RegisterScreen({ onSwitchToLogin, onLogin }) {
       const result = await window.api.register(email, password);
       if (result.error) {
         setError(translateError(result.error));
+      } else if (result.autoLogin && result.user) {
+        onLogin(result.user, result.tier || 'free');
       } else {
         setSuccess(true);
       }
