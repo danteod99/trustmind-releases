@@ -264,11 +264,17 @@ app.whenReady().then(() => {
   ipcMain.handle('updater:check', async () => { try { const r = await autoUpdater.checkForUpdates(); return { success: true, updateInfo: r?.updateInfo }; } catch (e) { return { success: false, error: e.message }; } });
   ipcMain.handle('updater:download', async () => { try { await autoUpdater.downloadUpdate(); return { success: true }; } catch (e) { return { success: false, error: e.message }; } });
   ipcMain.handle('updater:install', () => {
-    // Force quit on macOS — prevent app from blocking the restart
-    app.removeAllListeners('window-all-closed');
-    const windows = BrowserWindow.getAllWindows();
-    windows.forEach((w) => w.destroy());
-    autoUpdater.quitAndInstall(false, true);
+    setImmediate(() => {
+      // Force quit everything on macOS
+      app.removeAllListeners('window-all-closed');
+      app.removeAllListeners('before-quit');
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((w) => {
+        w.removeAllListeners('close');
+        w.destroy();
+      });
+      autoUpdater.quitAndInstall(true, true);
+    });
   });
 
   // Start the background scheduler executor

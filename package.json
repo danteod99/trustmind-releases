@@ -1,6 +1,6 @@
 {
   "name": "trustmind-desktop",
-  "version": "1.4.7",
+  "version": "1.4.8",
   "description": "TrustInsta Desktop — Instagram Multi-Account Manager with Antidetect Browser",
   "main": "main.js",
   "scripts": {
