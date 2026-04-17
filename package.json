@@ -1,6 +1,6 @@
 {
   "name": "trustmind-desktop",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "description": "TrustInsta Desktop — Instagram Multi-Account Manager with Antidetect Browser",
   "main": "main.js",
   "scripts": {
@@ -69,6 +69,11 @@
       "target": "nsis",
       "icon": "assets/icon.ico",
       "artifactName": "TrustInsta-Desktop-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false
     }
   }
 }
