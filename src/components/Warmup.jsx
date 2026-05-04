@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import UpgradePrompt from './shared/UpgradePrompt';
 
 const WARMUP_PLAN = [
@@ -37,12 +37,48 @@ export default function Warmup({ tier, onUpgrade }) {
   const [warmupStatus, setWarmupStatus] = useState({});
   const [loading, setLoading] = useState({});
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [viewMode, setViewMode] = useState('list');
+  const [logs, setLogs] = useState([]);
+  const logRef = useRef(null);
+  const [filter, setFilter] = useState('all'); // all, active, inactive, completed, session, no-session, banned
+
+  const addLog = (msg, type = 'info') => {
+    setLogs(prev => [...prev.slice(-150), { time: new Date().toLocaleTimeString(), msg, type }]);
+  };
 
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logs]);
+
+  // Listen for warmup automation events
+  useEffect(() => {
+    if (!window.api?.onAutomationEvent) return;
+    const handler = (data) => {
+      if (data?.data?.source !== 'warmup-auto') return;
+      const profileName = profiles.find(p => p.id === data.profileId)?.name || data.profileId;
+      const ev = data.event;
+      const d = data.data || {};
+      if (ev === 'start') {
+        addLog(`${profileName}: Dia ${d.day} — iniciando sesion`, 'info');
+      } else if (ev === 'progress') {
+        addLog(`${profileName}: ${d.action} +${d.done} (dia ${d.day})`, 'done');
+      } else if (ev === 'done' && d.type === 'warmup-batch') {
+        addLog(`${profileName}: ${d.message}`, 'done');
+      } else if (ev === 'done' && d.type === 'warmup') {
+        addLog(`${profileName}: Warm-up de 14 dias completado`, 'done');
+      } else if (ev === 'error') {
+        addLog(`${profileName}: Error — ${d.error}`, 'error');
+      }
+    };
+    window.api.onAutomationEvent(handler);
+  }, [profiles]);
 
   const loadData = async () => {
     try {
@@ -52,15 +88,20 @@ export default function Warmup({ tier, onUpgrade }) {
       setRunningIds(status);
       const allWarmup = await window.api.getAllWarmupStatus();
       setWarmupStatus(allWarmup || {});
-    } catch (err) {
-      // silently retry on next interval
-    }
+    } catch (err) {}
   };
 
+  const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const selectAll = () => setSelectedIds(profiles.map(p => p.id));
+  const selectNone = () => setSelectedIds([]);
+
   const handleStart = async (profileId) => {
+    const name = profiles.find(p => p.id === profileId)?.name || profileId;
     setLoading((prev) => ({ ...prev, [profileId]: true }));
     try {
-      await window.api.startWarmup(profileId);
+      const result = await window.api.startWarmup(profileId);
+      if (result?.error) addLog(`${name}: Error — ${result.error}`, 'error');
+      else addLog(`${name}: Warm-up iniciado`, 'info');
       await loadData();
     } finally {
       setLoading((prev) => ({ ...prev, [profileId]: false }));
@@ -68,12 +109,57 @@ export default function Warmup({ tier, onUpgrade }) {
   };
 
   const handleStop = async (profileId) => {
+    const name = profiles.find(p => p.id === profileId)?.name || profileId;
     setLoading((prev) => ({ ...prev, [profileId]: true }));
     try {
       await window.api.stopWarmup(profileId);
+      addLog(`${name}: Warm-up detenido`, 'warning');
       await loadData();
     } finally {
       setLoading((prev) => ({ ...prev, [profileId]: false }));
+    }
+  };
+
+  const handleStartSelected = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkLoading(true);
+    try {
+      const toStart = selectedIds.filter(id => {
+        const ws = warmupStatus[id];
+        return !ws || !ws.active;
+      });
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < toStart.length; i += BATCH_SIZE) {
+        const batch = toStart.slice(i, i + BATCH_SIZE);
+        for (const id of batch) {
+          await window.api.startWarmup(id);
+          await new Promise((r) => setTimeout(r, 8000));
+        }
+        await loadData();
+        if (i + BATCH_SIZE < toStart.length) {
+          await new Promise((r) => setTimeout(r, 30000));
+        }
+      }
+      await loadData();
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleStopSelected = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkLoading(true);
+    try {
+      for (const id of selectedIds) {
+        const ws = warmupStatus[id];
+        if (ws?.active) {
+          await window.api.stopWarmup(id);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+      await loadData();
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -87,14 +173,11 @@ export default function Warmup({ tier, onUpgrade }) {
       const BATCH_SIZE = 5;
       for (let i = 0; i < inactive.length; i += BATCH_SIZE) {
         const batch = inactive.slice(i, i + BATCH_SIZE);
-        // Launch each browser in the batch sequentially with delay
         for (const p of batch) {
           await window.api.startWarmup(p.id);
-          // Wait 8s per account for browser to initialize and start login
           await new Promise((r) => setTimeout(r, 8000));
         }
         await loadData();
-        // Wait 30s between batches for all browsers to finish login
         if (i + BATCH_SIZE < inactive.length) {
           await new Promise((r) => setTimeout(r, 30000));
         }
@@ -105,132 +188,312 @@ export default function Warmup({ tier, onUpgrade }) {
     }
   };
 
+  const activeCount = profiles.filter(p => warmupStatus[p.id]?.active).length;
+  const completedCount = profiles.filter(p => {
+    const ws = warmupStatus[p.id];
+    return ws && (ws.day > 14 || ws.completed);
+  }).length;
+  const bannedCount = profiles.filter(p => p.account_status === 'banned' || p.account_status === 'facial_verify' || p.account_status === 'challenge' || p.account_status === 'wrong_password' || p.account_status === 'email_verify').length;
+  const sessionCount = profiles.filter(p => p.ig_logged_in).length;
+
+  // Apply filter
+  const filteredProfiles = profiles.filter(p => {
+    const ws = warmupStatus[p.id] || {};
+    if (filter === 'active') return ws.active;
+    if (filter === 'inactive') return !ws.active && !(ws.day > 14 || ws.completed);
+    if (filter === 'completed') return ws.day > 14 || ws.completed;
+    if (filter === 'session') return p.ig_logged_in;
+    if (filter === 'no-session') return !p.ig_logged_in;
+    if (filter === 'banned') return p.account_status === 'banned' || p.account_status === 'facial_verify' || p.account_status === 'challenge' || p.account_status === 'wrong_password' || p.account_status === 'email_verify';
+    return true;
+  });
+  const selectedActiveCount = selectedIds.filter(id => warmupStatus[id]?.active).length;
+  const selectedInactiveCount = selectedIds.filter(id => {
+    const ws = warmupStatus[id];
+    return !ws || (!ws.active && !(ws.day > 14 || ws.completed));
+  }).length;
+
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="flex flex-col h-full relative overflow-y-auto">
       {tier !== 'pro' && <UpgradePrompt feature="warmup" onUpgrade={onUpgrade} onClose={() => {}} />}
+
+      {/* Header */}
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-2xl font-bold text-trust-dark">Warm-up de Cuentas</h2>
-        <button
-          onClick={handleStartAll}
-          disabled={bulkLoading}
-          className="px-4 py-2.5 bg-trust-accent text-white rounded-lg text-sm font-bold hover:bg-trust-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-trust"
-        >
-          {bulkLoading ? 'Iniciando...' : 'Iniciar Warm-up en Todas'}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-trust-surface rounded-lg p-0.5">
+            <button onClick={() => setViewMode('list')}
+              className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'list' ? 'bg-white text-trust-dark shadow-sm' : 'text-trust-muted hover:text-trust-dark'}`}>
+              Lista
+            </button>
+            <button onClick={() => setViewMode('cards')}
+              className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'cards' ? 'bg-white text-trust-dark shadow-sm' : 'text-trust-muted hover:text-trust-dark'}`}>
+              Cards
+            </button>
+          </div>
+          <button onClick={handleStartAll} disabled={bulkLoading}
+            className="px-4 py-2.5 bg-trust-accent text-white rounded-lg text-sm font-bold hover:bg-trust-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-trust">
+            {bulkLoading ? 'Procesando...' : 'Iniciar Todas'}
+          </button>
+        </div>
       </div>
-      <p className="text-trust-muted text-sm mb-5">
+      <p className="text-trust-muted text-sm mb-3">
         Calentamiento progresivo de 14 dias para cuentas nuevas de Instagram
       </p>
+
+      {/* Filters */}
+      <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+        {[
+          { id: 'all', label: `Todos (${profiles.length})`, color: 'gray' },
+          { id: 'session', label: `Sesion OK (${sessionCount})`, color: 'green' },
+          { id: 'no-session', label: `Sin sesion (${profiles.length - sessionCount})`, color: 'gray' },
+          { id: 'active', label: `En warmup (${activeCount})`, color: 'green' },
+          { id: 'inactive', label: `Inactivos (${profiles.length - activeCount - completedCount})`, color: 'gray' },
+          { id: 'completed', label: `Completados (${completedCount})`, color: 'blue' },
+          { id: 'banned', label: `Problemas (${bannedCount})`, color: 'red' },
+        ].map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-medium transition-all ${filter === f.id
+              ? f.color === 'green' ? 'bg-trust-green text-white'
+              : f.color === 'blue' ? 'bg-trust-accent text-white'
+              : f.color === 'red' ? 'bg-red-500 text-white'
+              : 'bg-trust-dark text-white'
+              : 'bg-trust-surface text-trust-muted hover:text-trust-dark'}`}>
+            {f.label}
+          </button>
+        ))}
+        {selectedIds.length > 0 && (
+          <span className="text-[10px] text-blue-600 font-medium ml-2">{selectedIds.length} seleccionados</span>
+        )}
+      </div>
+
+      {/* Bulk actions */}
+      {selectedIds.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+          <span className="text-xs text-blue-700 font-medium">{selectedIds.length} seleccionado(s)</span>
+          <div className="flex-1" />
+          {selectedInactiveCount > 0 && (
+            <button onClick={handleStartSelected} disabled={bulkLoading}
+              className="px-3 py-1.5 bg-trust-accent text-white rounded-lg text-xs font-bold hover:bg-trust-accent-hover transition-colors disabled:opacity-40">
+              {bulkLoading ? 'Procesando...' : `Iniciar ${selectedInactiveCount}`}
+            </button>
+          )}
+          {selectedActiveCount > 0 && (
+            <button onClick={handleStopSelected} disabled={bulkLoading}
+              className="px-3 py-1.5 bg-trust-red text-white rounded-lg text-xs font-bold hover:bg-trust-red/90 transition-colors disabled:opacity-40">
+              {bulkLoading ? 'Procesando...' : `Detener ${selectedActiveCount}`}
+            </button>
+          )}
+          <button onClick={selectNone} className="px-3 py-1.5 text-xs text-trust-muted hover:text-trust-dark">
+            Deseleccionar
+          </button>
+        </div>
+      )}
 
       {profiles.length === 0 ? (
         <div className="bg-white border border-trust-border rounded-xl p-8 shadow-trust text-center">
           <p className="text-trust-muted text-sm">No hay perfiles creados. Agrega perfiles primero.</p>
         </div>
+      ) : viewMode === 'list' ? (
+        /* ── LIST VIEW ── */
+        <div className="bg-white border border-trust-border rounded-xl shadow-trust overflow-hidden">
+          <div className="max-h-[55vh] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-trust-surface z-10">
+                <tr className="text-trust-muted text-xs border-b border-trust-border">
+                  <th className="text-left py-2.5 pl-4 pr-2 w-8">
+                    <input type="checkbox"
+                      checked={selectedIds.length === profiles.length && profiles.length > 0}
+                      onChange={() => selectedIds.length === profiles.length ? selectNone() : selectAll()}
+                      className="accent-blue-600 w-3.5 h-3.5 cursor-pointer" />
+                  </th>
+                  <th className="text-left py-2.5 px-2 font-semibold">Perfil</th>
+                  <th className="text-center py-2.5 px-2 font-semibold">Estado</th>
+                  <th className="text-center py-2.5 px-2 font-semibold">Dia</th>
+                  <th className="text-center py-2.5 px-2 font-semibold">Progreso</th>
+                  <th className="text-center py-2.5 px-2 font-semibold">Likes</th>
+                  <th className="text-center py-2.5 px-2 font-semibold">Follows</th>
+                  <th className="text-center py-2.5 px-2 font-semibold">Stories</th>
+                  <th className="text-center py-2.5 px-2 font-semibold">Comentarios</th>
+                  <th className="text-center py-2.5 px-2 pr-4 font-semibold">Accion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProfiles.map((profile) => {
+                  const ws = warmupStatus[profile.id] || {};
+                  const day = ws.day || 0;
+                  const isActive = ws.active || false;
+                  const isStarted = ws.started || false;
+                  const isCompleted = day > 14 || ws.completed;
+                  const limits = day > 0 ? getLimitsForDay(Math.min(day, 14)) : getLimitsForDay(1);
+                  const todayActions = ws.todayActions || { likes: 0, follows: 0, stories: 0, comments: 0 };
+                  const badge = getStatusBadge(ws);
+                  const progressPct = day > 0 ? Math.min((day / 14) * 100, 100) : 0;
+                  const isLoading = loading[profile.id] || false;
+                  const isSelected = selectedIds.includes(profile.id);
+                  const isBrowserOpen = runningIds.includes(profile.id);
+
+                  return (
+                    <tr key={profile.id}
+                      className={`border-b border-trust-border/50 hover:bg-trust-surface/50 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                      <td className="py-2.5 pl-4 pr-2">
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(profile.id)}
+                          className="accent-blue-600 w-3.5 h-3.5 cursor-pointer" />
+                      </td>
+                      <td className="py-2.5 px-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${isBrowserOpen ? 'bg-trust-green animate-pulse' : 'bg-gray-300'}`} />
+                          <div>
+                            <div className="font-medium text-trust-dark text-xs">{profile.name}</div>
+                            {profile.ig_user && <div className="text-[10px] text-trust-muted">@{profile.ig_user}</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-2 text-center">
+                        <div className="flex flex-col items-center gap-0.5">
+                          {/* Account status */}
+                          {profile.account_status === 'banned' ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-100 text-red-600">Baneada</span>
+                          ) : profile.account_status === 'facial_verify' ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-100 text-red-600">Verif. facial</span>
+                          ) : profile.account_status === 'challenge' ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-orange-100 text-orange-600">Challenge</span>
+                          ) : profile.account_status === 'wrong_password' ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-yellow-100 text-yellow-600">Pass incorrecta</span>
+                          ) : profile.account_status === 'email_verify' ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-purple-100 text-purple-600">Verif. email</span>
+                          ) : profile.ig_logged_in ? (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-trust-green/10 text-trust-green">Sesion OK</span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-gray-100 text-gray-500">Sin sesion</span>
+                          )}
+                          {/* Warmup status */}
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${badge.classes}`}>
+                            {badge.pulse && <span className="w-1 h-1 rounded-full bg-trust-green animate-pulse" />}
+                            {badge.label}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-2 text-center text-xs text-trust-dark font-medium">
+                        {isStarted ? `${Math.min(day, 14)}/14` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-trust-surface rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all duration-500 ${isCompleted ? 'bg-trust-accent' : isActive ? 'bg-trust-green' : 'bg-trust-border'}`}
+                              style={{ width: `${progressPct}%` }} />
+                          </div>
+                          <span className="text-[10px] text-trust-muted w-7 text-right">{Math.round(progressPct)}%</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-2 text-center text-xs text-trust-dark">
+                        {isStarted ? `${todayActions.likes}/${limits.likes}` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2 text-center text-xs text-trust-dark">
+                        {isStarted ? `${todayActions.follows}/${limits.follows}` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2 text-center text-xs text-trust-dark">
+                        {isStarted ? `${todayActions.stories}/${limits.stories}` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2 text-center text-xs text-trust-dark">
+                        {isStarted ? `${todayActions.comments}/${limits.comments}` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2 pr-4 text-center">
+                        {isCompleted ? (
+                          <span className="text-[10px] text-trust-accent font-semibold">Completado</span>
+                        ) : isActive ? (
+                          <button onClick={() => handleStop(profile.id)} disabled={isLoading || bulkLoading}
+                            className="px-2.5 py-1 bg-trust-red text-white rounded-md text-[10px] font-bold hover:bg-trust-red/90 transition-colors disabled:opacity-40">
+                            {isLoading ? '...' : 'Detener'}
+                          </button>
+                        ) : (
+                          <button onClick={() => handleStart(profile.id)} disabled={isLoading || bulkLoading}
+                            className="px-2.5 py-1 bg-trust-accent text-white rounded-md text-[10px] font-bold hover:bg-trust-accent-hover transition-colors disabled:opacity-40">
+                            {isLoading ? '...' : 'Iniciar'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* ── CARDS VIEW ── */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {profiles.map((profile) => {
+          {filteredProfiles.map((profile) => {
             const ws = warmupStatus[profile.id] || {};
             const day = ws.day || 0;
             const isActive = ws.active || false;
             const isStarted = ws.started || false;
             const isCompleted = day > 14 || ws.completed;
-            const isBrowserOpen = runningIds.includes(profile.id);
             const limits = day > 0 ? getLimitsForDay(Math.min(day, 14)) : getLimitsForDay(1);
             const todayActions = ws.todayActions || { likes: 0, follows: 0, stories: 0, comments: 0 };
             const badge = getStatusBadge(ws);
             const progressPct = day > 0 ? Math.min((day / 14) * 100, 100) : 0;
             const isLoading = loading[profile.id] || false;
+            const isSelected = selectedIds.includes(profile.id);
 
             return (
-              <div
-                key={profile.id}
-                className={`bg-white border rounded-xl p-5 shadow-trust transition-all ${
-                  isActive ? 'border-trust-green/40' : 'border-trust-border'
-                }`}
-              >
-                {/* Header */}
+              <div key={profile.id}
+                className={`bg-white border rounded-xl p-5 shadow-trust transition-all cursor-pointer ${
+                  isActive ? 'border-trust-green/40' : isSelected ? 'border-blue-400' : 'border-trust-border'
+                } ${isSelected ? 'ring-2 ring-blue-200' : ''}`}
+                onClick={() => toggleSelect(profile.id)}>
                 <div className="flex items-start justify-between mb-3">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-trust-dark truncate">{profile.name}</h3>
-                    {profile.ig_user && (
-                      <p className="text-xs text-trust-muted">@{profile.ig_user}</p>
-                    )}
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(profile.id)}
+                      onClick={e => e.stopPropagation()} className="accent-blue-600 w-3.5 h-3.5 cursor-pointer shrink-0" />
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-bold text-trust-dark truncate">{profile.name}</h3>
+                      {profile.ig_user && <p className="text-xs text-trust-muted">@{profile.ig_user}</p>}
+                    </div>
                   </div>
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${badge.classes}`}>
-                    {badge.pulse && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-trust-green animate-pulse" />
-                    )}
+                    {badge.pulse && <span className="w-1.5 h-1.5 rounded-full bg-trust-green animate-pulse" />}
                     {badge.label}
                   </span>
                 </div>
-
-                {/* Day progress */}
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-trust-dark">
-                      {isStarted ? `Dia ${Math.min(day, 14)} de 14` : 'Sin iniciar'}
-                    </span>
-                    <span className="text-xs text-trust-muted">
-                      {Math.round(progressPct)}%
-                    </span>
+                    <span className="text-xs font-semibold text-trust-dark">{isStarted ? `Dia ${Math.min(day, 14)} de 14` : 'Sin iniciar'}</span>
+                    <span className="text-xs text-trust-muted">{Math.round(progressPct)}%</span>
                   </div>
                   <div className="w-full h-2 bg-trust-surface rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        isCompleted ? 'bg-trust-accent' : isActive ? 'bg-trust-green' : 'bg-trust-border'
-                      }`}
-                      style={{ width: `${progressPct}%` }}
-                    />
+                    <div className={`h-full rounded-full transition-all duration-500 ${isCompleted ? 'bg-trust-accent' : isActive ? 'bg-trust-green' : 'bg-trust-border'}`}
+                      style={{ width: `${progressPct}%` }} />
                   </div>
                 </div>
-
-                {/* Daily limits */}
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <div className="bg-trust-surface rounded-lg px-3 py-2">
                     <div className="text-xs text-trust-muted">Likes</div>
-                    <div className="text-sm font-bold text-trust-dark">
-                      {isStarted ? `${todayActions.likes}/${limits.likes}` : `0/${limits.likes}`}
-                    </div>
+                    <div className="text-sm font-bold text-trust-dark">{isStarted ? `${todayActions.likes}/${limits.likes}` : `0/${limits.likes}`}</div>
                   </div>
                   <div className="bg-trust-surface rounded-lg px-3 py-2">
                     <div className="text-xs text-trust-muted">Follows</div>
-                    <div className="text-sm font-bold text-trust-dark">
-                      {isStarted ? `${todayActions.follows}/${limits.follows}` : `0/${limits.follows}`}
-                    </div>
+                    <div className="text-sm font-bold text-trust-dark">{isStarted ? `${todayActions.follows}/${limits.follows}` : `0/${limits.follows}`}</div>
                   </div>
                   <div className="bg-trust-surface rounded-lg px-3 py-2">
                     <div className="text-xs text-trust-muted">Stories</div>
-                    <div className="text-sm font-bold text-trust-dark">
-                      {isStarted ? `${todayActions.stories}/${limits.stories}` : `0/${limits.stories}`}
-                    </div>
+                    <div className="text-sm font-bold text-trust-dark">{isStarted ? `${todayActions.stories}/${limits.stories}` : `0/${limits.stories}`}</div>
                   </div>
                   <div className="bg-trust-surface rounded-lg px-3 py-2">
                     <div className="text-xs text-trust-muted">Comentarios</div>
-                    <div className="text-sm font-bold text-trust-dark">
-                      {isStarted ? `${todayActions.comments}/${limits.comments}` : `0/${limits.comments}`}
-                    </div>
+                    <div className="text-sm font-bold text-trust-dark">{isStarted ? `${todayActions.comments}/${limits.comments}` : `0/${limits.comments}`}</div>
                   </div>
                 </div>
-
-                {/* Action button */}
                 {isCompleted ? (
-                  <div className="text-xs text-trust-accent text-center py-2 bg-trust-accent/5 rounded-lg font-semibold">
-                    Warm-up completado
-                  </div>
+                  <div className="text-xs text-trust-accent text-center py-2 bg-trust-accent/5 rounded-lg font-semibold">Warm-up completado</div>
                 ) : isActive ? (
-                  <button
-                    onClick={() => handleStop(profile.id)}
-                    disabled={isLoading}
-                    className="w-full px-4 py-2.5 bg-trust-red text-white rounded-lg text-sm font-bold hover:bg-trust-red/90 transition-colors disabled:opacity-40"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); handleStop(profile.id); }} disabled={isLoading}
+                    className="w-full px-4 py-2.5 bg-trust-red text-white rounded-lg text-sm font-bold hover:bg-trust-red/90 transition-colors disabled:opacity-40">
                     {isLoading ? 'Deteniendo...' : 'Detener Warm-up'}
                   </button>
                 ) : (
-                  <button
-                    onClick={() => handleStart(profile.id)}
-                    disabled={isLoading}
-                    className="w-full px-4 py-2.5 bg-trust-accent text-white rounded-lg text-sm font-bold hover:bg-trust-accent-hover transition-colors disabled:opacity-40"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); handleStart(profile.id); }} disabled={isLoading}
+                    className="w-full px-4 py-2.5 bg-trust-accent text-white rounded-lg text-sm font-bold hover:bg-trust-accent-hover transition-colors disabled:opacity-40">
                     {isLoading ? 'Iniciando...' : 'Iniciar Warm-up'}
                   </button>
                 )}
@@ -240,8 +503,28 @@ export default function Warmup({ tier, onUpgrade }) {
         </div>
       )}
 
+      {/* Logs */}
+      <div className="bg-white border border-trust-border rounded-xl shadow-trust mt-4 shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-trust-border">
+          <h3 className="text-xs font-bold text-trust-dark">Logs de Warm-up</h3>
+          {logs.length > 0 && (
+            <button onClick={() => setLogs([])} className="text-[10px] text-trust-muted hover:text-trust-dark">Limpiar</button>
+          )}
+        </div>
+        <div ref={logRef} className="h-28 overflow-y-auto px-4 py-2 font-mono text-[11px] space-y-0.5">
+          {logs.length === 0 ? (
+            <p className="text-trust-muted text-xs py-4 text-center">Sin actividad aun — los logs apareceran cuando el warm-up se ejecute</p>
+          ) : logs.map((log, i) => (
+            <div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-500' : log.type === 'done' ? 'text-trust-green' : log.type === 'warning' ? 'text-amber-500' : 'text-trust-muted'}`}>
+              <span className="text-trust-muted/60 shrink-0">{log.time}</span>
+              <span>{log.msg}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Warm-up plan reference */}
-      <div className="bg-white border border-trust-border rounded-xl p-5 shadow-trust mt-6">
+      <div className="bg-white border border-trust-border rounded-xl p-5 shadow-trust mt-4 shrink-0">
         <h3 className="text-sm font-bold text-trust-dark mb-3">Plan de Warm-up Progresivo</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">

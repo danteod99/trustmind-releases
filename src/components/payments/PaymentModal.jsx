@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const plans = [
-  { id: 'insta-monthly', name: 'TrustInsta Pro', price: 99, period: '/mes', savings: null, product: 'trustinsta', badge: 'Instagram' },
-  { id: 'insta-quarterly', name: 'TrustInsta Pro', price: 229, period: '/3 meses', savings: 'Ahorra 23%', product: 'trustinsta', badge: 'Instagram' },
-  { id: 'insta-yearly', name: 'TrustInsta Pro', price: 599, period: '/ano', savings: 'Ahorra 50%', product: 'trustinsta', badge: 'Instagram' },
-  { id: 'bundle-monthly', name: 'Trust Bundle', price: 149, period: '/mes', savings: 'Insta + Face', product: 'bundle', badge: 'Todo incluido', highlight: true },
-  { id: 'bundle-quarterly', name: 'Trust Bundle', price: 349, period: '/3 meses', savings: 'Ahorra 22%', product: 'bundle', badge: 'Todo incluido', highlight: true },
-  { id: 'bundle-yearly', name: 'Trust Bundle', price: 899, period: '/ano', savings: 'Ahorra 50%', product: 'bundle', badge: 'Todo incluido', highlight: true },
+  { id: 'insta-monthly', name: 'TrustInsta Pro', price: 29, period: '/mes', savings: null, product: 'trustinsta', badge: 'Instagram' },
+  { id: 'insta-quarterly', name: 'TrustInsta Pro', price: 69, period: '/3 meses', savings: 'Ahorra 21%', product: 'trustinsta', badge: 'Instagram' },
+  { id: 'insta-yearly', name: 'TrustInsta Pro', price: 199, period: '/ano', savings: 'Ahorra 43%', product: 'trustinsta', badge: 'Instagram' },
+  { id: 'bundle-monthly', name: 'Trust Bundle', price: 49, period: '/mes', savings: 'Insta + Face', product: 'bundle', badge: 'Todo incluido', highlight: true },
+  { id: 'bundle-quarterly', name: 'Trust Bundle', price: 119, period: '/3 meses', savings: 'Ahorra 19%', product: 'bundle', badge: 'Todo incluido', highlight: true },
+  { id: 'bundle-yearly', name: 'Trust Bundle', price: 349, period: '/ano', savings: 'Ahorra 41%', product: 'bundle', badge: 'Todo incluido', highlight: true },
 ];
 
 const networks = [
