@@ -38,6 +38,18 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authView, setAuthView] = useState('login'); // 'login' or 'register'
   const [showPayment, setShowPayment] = useState(false);
+  const [balance, setBalance] = useState(0);
+
+  // Refrescar saldo del user logueado
+  useEffect(() => {
+    if (!user) { setBalance(0); return; }
+    const fetchBalance = () => {
+      window.api.getBalance?.().then((r) => setBalance(Number(r?.balance) || 0)).catch(() => {});
+    };
+    fetchBalance();
+    const interval = setInterval(fetchBalance, 60000); // refresh cada 1 min
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     window.api.getSession().then((session) => {
@@ -109,6 +121,7 @@ export default function App() {
         tabs={TABS}
         tier={tier}
         user={user}
+        balance={balance}
         onLogout={handleLogout}
         onUpgrade={() => setShowPayment(true)}
         proTabs={PRO_TABS}

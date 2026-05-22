@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('api', {
   createPaymentOrder: (plan) => ipcRenderer.invoke('payment:create-order', plan),
   checkPaymentStatus: (orderId) => ipcRenderer.invoke('payment:check-status', orderId),
   getPaymentHistory: () => ipcRenderer.invoke('payment:history'),
+  getBalance: () => ipcRenderer.invoke('user:get-balance'),
 
   // Generic run automation (for ProfileList context menu)
   runAutomation: (profileId, actionId, config) => ipcRenderer.invoke('auto:run-generic', profileId, actionId, config),
