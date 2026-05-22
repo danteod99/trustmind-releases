@@ -6,11 +6,15 @@ export default function UpdateNotification() {
   const [progress, setProgress] = useState(0);
   const [downloaded, setDownloaded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [error, setError] = useState(null);
+  const [openedManual, setOpenedManual] = useState(false);
+  const isMac = (window.api?.platform || 'darwin') === 'darwin';
 
   useEffect(() => {
     window.api.onUpdateAvailable?.((info) => setUpdateInfo(info));
     window.api.onUpdateDownloadProgress?.((p) => setProgress(Math.round(p.percent)));
-    window.api.onUpdateDownloaded?.(() => setDownloaded(true));
+    window.api.onUpdateDownloaded?.(() => { setDownloaded(true); setDownloading(false); });
+    window.api.onUpdaterError?.((data) => { setError(data?.error || 'Error desconocido'); setDownloading(false); });
   }, []);
 
   if (dismissed || !updateInfo) return null;
@@ -22,6 +26,8 @@ export default function UpdateNotification() {
         <div>
           <p className="text-sm font-medium text-white">Nueva version disponible: v{updateInfo.version}</p>
           {downloading && !downloaded && <div className="w-48 h-1.5 bg-white/10 rounded-full mt-1"><div className="h-full bg-trust-accent rounded-full transition-all" style={{width: `${progress}%`}}/></div>}
+          {openedManual && <p className="text-[10px] text-white/60 mt-1">Se abrió la descarga en tu navegador. Cierra esta app, arrastra el nuevo DMG a Aplicaciones reemplazando el actual.</p>}
+          {error && <p className="text-[10px] text-red-400 mt-1">{error}</p>}
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -30,7 +36,20 @@ export default function UpdateNotification() {
         ) : downloading ? (
           <span className="text-xs text-white/50">{progress}%</span>
         ) : (
-          <button onClick={() => { setDownloading(true); window.api.downloadUpdate(); }} className="px-3 py-1.5 bg-trust-accent text-white rounded-lg text-xs font-medium hover:bg-trust-accent-hover">Descargar</button>
+          <button
+            onClick={async () => {
+              setError(null);
+              if (isMac) {
+                setOpenedManual(true);
+                await window.api.openReleaseDownload?.();
+              } else {
+                setDownloading(true);
+                window.api.downloadUpdate();
+              }
+            }}
+            className="px-3 py-1.5 bg-trust-accent text-white rounded-lg text-xs font-medium hover:bg-trust-accent-hover">
+            {isMac ? 'Abrir descarga' : 'Descargar'}
+          </button>
         )}
         <button onClick={() => setDismissed(true)} className="text-white/30 hover:text-white text-xs">✕</button>
       </div>
