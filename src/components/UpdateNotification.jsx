@@ -17,7 +17,23 @@ export default function UpdateNotification() {
     window.api.onUpdaterError?.((data) => { setError(data?.error || 'Error desconocido'); setDownloading(false); });
   }, []);
 
-  if (dismissed || !updateInfo) return null;
+  // Mostrar también errores aunque no haya updateInfo (sino el user no se entera)
+  if (dismissed) return null;
+  if (!updateInfo && !error) return null;
+  if (!updateInfo && error) {
+    return (
+      <div className="mb-4 p-3 rounded-xl border border-yellow-500/30 bg-yellow-500/5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-yellow-400 text-lg">⚠</span>
+          <div>
+            <p className="text-sm font-medium text-white">No se pudo verificar actualizaciones</p>
+            <p className="text-[10px] text-yellow-400/80 mt-1">{error}</p>
+          </div>
+        </div>
+        <button onClick={() => setDismissed(true)} className="text-white/30 hover:text-white text-xs">✕</button>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-4 p-3 rounded-xl border border-trust-accent/30 bg-trust-accent/5 flex items-center justify-between">

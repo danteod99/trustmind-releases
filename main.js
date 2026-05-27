@@ -260,8 +260,23 @@ app.whenReady().then(() => {
   autoUpdater.on('download-progress', (progress) => { if (mainWindow) mainWindow.webContents.send('updater:download-progress', { percent: progress.percent }); });
   autoUpdater.on('update-downloaded', (info) => { if (mainWindow) mainWindow.webContents.send('updater:update-downloaded', { version: info.version }); });
   autoUpdater.on('error', (err) => { console.error('Updater error:', err.message); if (mainWindow) mainWindow.webContents.send('updater:error', { error: err.message }); });
-  if (app.isPackaged) { setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000); }
-  ipcMain.handle('updater:check', async () => { try { const r = await autoUpdater.checkForUpdates(); return { success: true, updateInfo: r?.updateInfo }; } catch (e) { return { success: false, error: e.message }; } });
+  // Check al arrancar + cada 30 min mientras esté abierta
+  async function safeCheckUpdates(reason) {
+    try {
+      const r = await autoUpdater.checkForUpdates();
+      console.log(`[Updater] check (${reason}): currentVersion=${app.getVersion()} latest=${r?.updateInfo?.version}`);
+      return r;
+    } catch (e) {
+      console.error(`[Updater] check (${reason}) FAILED:`, e.message);
+      if (mainWindow) mainWindow.webContents.send('updater:error', { error: e.message });
+      return null;
+    }
+  }
+  if (app.isPackaged) {
+    setTimeout(() => safeCheckUpdates('startup'), 3000);
+    setInterval(() => safeCheckUpdates('periodic-30min'), 30 * 60 * 1000);
+  }
+  ipcMain.handle('updater:check', async () => { try { const r = await autoUpdater.checkForUpdates(); return { success: true, updateInfo: r?.updateInfo, currentVersion: app.getVersion() }; } catch (e) { return { success: false, error: e.message }; } });
   ipcMain.handle('updater:download', async () => { try { await autoUpdater.downloadUpdate(); return { success: true }; } catch (e) { return { success: false, error: e.message }; } });
   ipcMain.handle('updater:open-release', async () => {
     try {
