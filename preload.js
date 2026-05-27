@@ -102,6 +102,7 @@ contextBridge.exposeInMainWorld('api', {
   checkPaymentStatus: (orderId) => ipcRenderer.invoke('payment:check-status', orderId),
   getPaymentHistory: () => ipcRenderer.invoke('payment:history'),
   getBalance: () => ipcRenderer.invoke('user:get-balance'),
+  chargeAction: (action, count) => ipcRenderer.invoke('desktop:charge', action, count),
 
   // Generic run automation (for ProfileList context menu)
   runAutomation: (profileId, actionId, config) => ipcRenderer.invoke('auto:run-generic', profileId, actionId, config),
@@ -109,6 +110,12 @@ contextBridge.exposeInMainWorld('api', {
   // Events from main process
   onAutomationEvent: (callback) => {
     ipcRenderer.on('automation:event', (_, data) => callback(data));
+  },
+  onBalanceUpdated: (callback) => {
+    ipcRenderer.on('balance:updated', (_, data) => callback(data));
+  },
+  onBalanceInsufficient: (callback) => {
+    ipcRenderer.on('balance:insufficient', (_, data) => callback(data));
   },
   onLoginSuccess: (callback) => {
     ipcRenderer.on('ig:login-success', (_, profileId) => callback(profileId));

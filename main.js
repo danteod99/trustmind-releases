@@ -714,6 +714,52 @@ ipcMain.handle('user:get-balance', async () => {
   }
 });
 
+// ─── Sistema de créditos por acción ─────────────────────────────────
+// Cada acción (like, follow, comment, etc.) descuenta del saldo SMM
+// vía /api/desktop/charge. Si insuficiente, emite evento al renderer.
+
+const TRUSTMIND_API = 'https://www.trustmind.online';
+
+async function chargeUserAction(action, count) {
+  if (!currentUser || !count || count < 1) return { skipped: true };
+  try {
+    const session = loadSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) return { error: 'no_session' };
+
+    const res = await fetch(`${TRUSTMIND_API}/api/desktop/charge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ action, count, app: 'trustinsta' }),
+    });
+    const data = await res.json();
+
+    if (res.status === 402) {
+      // Saldo insuficiente — emitir evento al renderer
+      mainWindow?.webContents.send('balance:insufficient', data);
+      return { insufficient: true, ...data };
+    }
+    if (!res.ok) {
+      console.log(`[Charge] HTTP ${res.status}: ${data.error || 'unknown'}`);
+      return { error: data.error || 'charge_failed' };
+    }
+    // Éxito — notificar al renderer para refrescar UI
+    mainWindow?.webContents.send('balance:updated', { balance: data.newBalance });
+    return { success: true, ...data };
+  } catch (err) {
+    console.log(`[Charge] Error: ${err.message}`);
+    return { error: err.message };
+  }
+}
+
+// IPC handler para que el renderer pueda cobrar manualmente o consultar
+ipcMain.handle('desktop:charge', async (_, action, count) => {
+  return chargeUserAction(action, count);
+});
+
 // ─── IPC: Profile CRUD ─────────────────────────────────────────────
 
 // Sensitive profile fields that must be encrypted at rest
@@ -916,6 +962,7 @@ ipcMain.handle('auto:like', async (_, profileId, config) => {
     if (result.likesGiven > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'auto-like', config.targetUser || '', result.likesGiven);
+      await chargeUserAction('like', result.likesGiven);
     }
     return result;
   } catch (err) {
@@ -929,6 +976,7 @@ ipcMain.handle('auto:follow', async (_, profileId, config) => {
     if (result.followed > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'auto-follow', config.targetUser || '', result.followed);
+      await chargeUserAction('follow', result.followed);
     }
     return result;
   } catch (err) {
@@ -942,6 +990,7 @@ ipcMain.handle('auto:unfollow', async (_, profileId, config) => {
     if (result.unfollowed > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'auto-unfollow', '', result.unfollowed);
+      await chargeUserAction('unfollow', result.unfollowed);
     }
     return result;
   } catch (err) {
@@ -955,6 +1004,7 @@ ipcMain.handle('auto:stories', async (_, profileId, config) => {
     if (result.storiesViewed > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'auto-stories', config.targetUser || 'feed', result.storiesViewed);
+      await chargeUserAction('story_view', result.storiesViewed);
     }
     return result;
   } catch (err) {
@@ -968,6 +1018,7 @@ ipcMain.handle('auto:visit', async (_, profileId, config) => {
     if (result.visited > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'auto-visit', '', result.visited);
+      await chargeUserAction('visit', result.visited);
     }
     return result;
   } catch (err) {
@@ -982,6 +1033,7 @@ ipcMain.handle('auto:comment', async (_, profileId, config) => {
     if (result.commented > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'auto-comment', config.targetUser || '', result.commented);
+      await chargeUserAction('comment', result.commented);
     }
     return result;
   } catch (err) {
@@ -995,6 +1047,7 @@ ipcMain.handle('auto:like-hashtag', async (_, profileId, config) => {
     if (result.likesGiven > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'like-hashtag', config.hashtag || '', result.likesGiven);
+      await chargeUserAction('like', result.likesGiven);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1006,6 +1059,7 @@ ipcMain.handle('auto:like-feed', async (_, profileId, config) => {
     if (result.likesGiven > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'like-feed', 'feed', result.likesGiven);
+      await chargeUserAction('like', result.likesGiven);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1017,6 +1071,7 @@ ipcMain.handle('auto:like-explore', async (_, profileId, config) => {
     if (result.likesGiven > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'like-explore', 'explore', result.likesGiven);
+      await chargeUserAction('like', result.likesGiven);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1028,6 +1083,7 @@ ipcMain.handle('auto:watch-reels', async (_, profileId, config) => {
     if (result.watched > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'watch-reels', 'reels', result.watched);
+      await chargeUserAction('reels_view', result.watched);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1039,6 +1095,7 @@ ipcMain.handle('auto:follow-hashtag', async (_, profileId, config) => {
     if (result.followed > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'follow-hashtag', config.hashtag || '', result.followed);
+      await chargeUserAction('follow', result.followed);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1051,6 +1108,7 @@ ipcMain.handle('auto:send-dm', async (_, profileId, config) => {
     if (result.sent > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'send-dm', '', result.sent);
+      await chargeUserAction('dm', result.sent);
     }
     return result;
   } catch (err) { return err.error ? err : { error: err.message || 'Error desconocido' }; }
@@ -1070,6 +1128,7 @@ ipcMain.handle('auto:share-post', async (_, profileId, config) => {
     if (result.shared > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'share-post', config.postUrl || '', result.shared);
+      await chargeUserAction('like', result.shared);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1085,6 +1144,7 @@ ipcMain.handle('auto:follow-suggestions', async (_, profileId, config) => {
     if (result.followed > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'follow-suggestions', 'suggestions', result.followed);
+      await chargeUserAction('follow', result.followed);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1096,6 +1156,7 @@ ipcMain.handle('auto:search-follow', async (_, profileId, config) => {
     if (result.followed > 0) {
       const db = getDb();
       db.prepare('INSERT INTO action_log (profile_id, action_type, target, count) VALUES (?, ?, ?, ?)').run(profileId, 'search-follow', config.keyword || '', result.followed);
+      await chargeUserAction('follow', result.followed);
     }
     return result;
   } catch (err) { return { error: err.message }; }
@@ -1122,6 +1183,7 @@ ipcMain.handle('auto:extract-followers', async (_, profileId, config) => {
       db.prepare(
         'INSERT INTO extraction_history (target_user, count, extracted_by) VALUES (?, ?, ?)'
       ).run(result.target, result.followers.length, profile?.ig_user || '');
+      await chargeUserAction('extract_followers', result.followers.length);
     }
     return result;
   } catch (err) {
