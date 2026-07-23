@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const https = require('https');
 const path = require('path');
@@ -25,7 +25,7 @@ if (app.isPackaged) {
   app.commandLine.appendSwitch('disable-features', 'DebugMode');
 }
 const { initDatabase, getDb } = require('./src/db/database');
-const { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey } = require('./src/browser/manager');
+const { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey, setCaptchaProvider, getCaptchaProvider } = require('./src/browser/manager');
 const {
   autoLike, autoFollow, autoUnfollow, autoViewStories,
   autoVisitProfiles, autoComment, extractFollowers,
@@ -246,6 +246,11 @@ app.whenReady().then(() => {
   if (capRow && capRow.value) {
     setCapsolverKey(capRow.value);
     console.log('[CapSolver] API key loaded from settings');
+  }
+  const provRow = db.prepare("SELECT value FROM settings WHERE key = 'captcha_provider'").get();
+  if (provRow && provRow.value) {
+    setCaptchaProvider(provRow.value);
+    console.log('[Captcha] Provider loaded from settings:', provRow.value);
   }
 
   createWindow();
@@ -736,6 +741,10 @@ ipcMain.handle('user:get-balance', async () => {
 const TRUSTMIND_API = 'https://www.trustmind.online';
 
 async function chargeUserAction(action, count) {
+  // Modelo sin creditos: las acciones ya no se cobran por saldo.
+  // El acceso se controla por tier (free/pro). Pro se activa por WhatsApp.
+  return { success: true, skipped: true };
+  // eslint-disable-next-line no-unreachable
   if (!currentUser || !count || count < 1) return { skipped: true };
   try {
     const session = loadSession();
@@ -795,6 +804,21 @@ function decryptProfile(profile) {
 
 ipcMain.handle('open-external', (_, url) => {
   if (typeof url === 'string' && url.startsWith('https://')) shell.openExternal(url);
+});
+
+ipcMain.handle('dialog:select-files', async (_, opts = {}) => {
+  const properties = ['openFile'];
+  if (opts.multiple) properties.push('multiSelections');
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: opts.multiple ? 'Selecciona los archivos' : 'Selecciona el archivo',
+    properties,
+    filters: [
+      { name: 'Imagenes y videos', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'avi', 'mkv', 'webm'] },
+      { name: 'Todos los archivos', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || !result.filePaths.length) return [];
+  return result.filePaths;
 });
 
 ipcMain.handle('profiles:list', () => {
@@ -1268,6 +1292,11 @@ ipcMain.handle('settings:set', (_, key, value) => {
   const db = getDb();
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
 
+  // If captcha provider changed, update the manager
+  if (key === 'captcha_provider') {
+    setCaptchaProvider(value);
+    console.log('[Captcha] Provider updated:', value);
+  }
   // If capsolver key changed, update the manager
   if (key === 'capsolver_api_key') {
     setCapsolverKey(value);

@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld('api', {
   // External links
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // Native file picker
+  selectFiles: (opts) => ipcRenderer.invoke('dialog:select-files', opts),
+
   // Profiles
   listProfiles: () => ipcRenderer.invoke('profiles:list'),
   createProfile: (profile) => ipcRenderer.invoke('profiles:create', profile),

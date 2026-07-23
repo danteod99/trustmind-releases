@@ -12,6 +12,7 @@ const activeBrowsers = new Map();
 
 // CapSolver API key
 let capsolverApiKey = '';
+let captchaProvider = 'capsolver';
 
 // ─── Grid Layout for Browser Windows ────────────────────────────────
 // Mobile-sized windows arranged in a grid so multiple are visible at once
@@ -447,7 +448,7 @@ async function launchBrowser(profile) {
   if (hasCapsolverExt && capsolverApiKey) {
     try {
       const configFile = path.join(capsolverPath, 'config.json');
-      fs.writeFileSync(configFile, JSON.stringify({ apiKey: capsolverApiKey }));
+      fs.writeFileSync(configFile, JSON.stringify({ apiKey: capsolverApiKey, provider: captchaProvider }));
       console.log(`[CapSolver] API key written to extension config.json`);
     } catch {
       // Ignore write errors (e.g. read-only extension dir)
@@ -501,11 +502,11 @@ async function launchBrowser(profile) {
       // For now, inject into every new page via context event
       const injectCapsolverKey = async (page) => {
         try {
-          await page.evaluate((key) => {
+          await page.evaluate(({ key, provider }) => {
             if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-              chrome.storage.local.set({ capsolverApiKey: key });
+              chrome.storage.local.set({ capsolverApiKey: key, captchaProvider: provider });
             }
-          }, capsolverApiKey);
+          }, { key: capsolverApiKey, provider: captchaProvider });
         } catch {
           // Extension may not be available on this page (e.g. chrome:// pages)
         }
@@ -1214,4 +1215,12 @@ function getCapsolverKey() {
   return capsolverApiKey;
 }
 
-module.exports = { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey };
+function setCaptchaProvider(provider) {
+  captchaProvider = provider === 'omocaptcha' ? 'omocaptcha' : 'capsolver';
+}
+
+function getCaptchaProvider() {
+  return captchaProvider;
+}
+
+module.exports = { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey, setCaptchaProvider, getCaptchaProvider };

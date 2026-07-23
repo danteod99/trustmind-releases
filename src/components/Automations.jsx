@@ -109,7 +109,7 @@ const ACTION_FIELDS = {
     { key: 'delayMax', label: 'Delay maximo (seg)', type: 'number', min: 1, max: 120, default: 45 },
   ],
   'upload-post': [
-    { key: 'imagePath', label: 'Ruta de imagen/video', type: 'text', placeholder: '/ruta/a/imagen.jpg', mono: true },
+    { key: 'imagePath', label: 'Imagen / Video', type: 'file' },
     { key: 'caption', label: 'Caption/Descripcion', type: 'textarea', placeholder: 'Escribe el caption del post...', rows: 3 },
   ],
   'edit-profile': [
@@ -261,6 +261,32 @@ function ConfigFields({ actionId, config, onChange }) {
               <select value={config[f.key] || f.default || ''} onChange={(e) => update(f.key, e.target.value)} className={INPUT_CLASS}>
                 {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+            </div>
+          );
+        }
+        if (f.type === 'file') {
+          return (
+            <div key={f.key}>
+              <label className={LABEL_CLASS}>{f.label}</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={config[f.key] || ''}
+                  onChange={(e) => update(f.key, e.target.value)}
+                  placeholder={f.placeholder || 'Ningun archivo seleccionado'}
+                  className={INPUT_CLASS + ' font-mono text-xs'}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const paths = await window.api.selectFiles?.({ multiple: !!f.multiple });
+                    if (paths && paths.length) update(f.key, paths.join(', '));
+                  }}
+                  className="px-4 py-2 bg-trust-accent text-white rounded-lg text-sm font-medium hover:bg-trust-accent-hover transition-colors shrink-0"
+                >
+                  {f.multiple ? 'Seleccionar archivos' : 'Seleccionar archivo'}
+                </button>
+              </div>
             </div>
           );
         }
