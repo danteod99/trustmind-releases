@@ -1,6 +1,6 @@
 {
   "name": "trustmind-desktop",
-  "version": "1.0.0",
+  "version": "1.6.8",
   "description": "TrustMind Desktop — Multi-Account Browser Manager with Proxy Support",
   "main": "main.js",
   "author": "TrustMind",
