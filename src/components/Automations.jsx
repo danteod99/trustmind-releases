@@ -87,7 +87,8 @@ const ACTION_FIELDS = {
     { key: 'delayMax', label: 'Delay maximo (seg)', type: 'number', min: 1, max: 120, default: 8 },
   ],
   'comment': [
-    { key: 'targetUser', label: 'Perfil objetivo', type: 'text', placeholder: '@usuario' },
+    { key: 'postUrl', label: 'URL de UN post especifico (opcional)', type: 'text', placeholder: 'https://www.instagram.com/p/...', mono: true, hint: 'Si pegas el link de un post, cada cuenta comenta 1 vez en ESE post. Si lo dejas vacio, comenta en varios posts del perfil de abajo.' },
+    { key: 'targetUser', label: 'Perfil objetivo (si no usas link de post)', type: 'text', placeholder: '@usuario' },
     { key: 'useAI', label: 'Generar comentarios con IA', type: 'checkbox', default: false },
     { key: 'aiApiKey', label: 'API Key (OpenAI o Anthropic)', type: 'text', placeholder: 'sk-...', mono: true, showIf: 'useAI' },
     { key: 'aiProvider', label: 'Proveedor IA', type: 'select', options: [{ value: 'openai', label: 'OpenAI (GPT)' }, { value: 'anthropic', label: 'Anthropic (Claude)' }, { value: 'gemini', label: 'Google (Gemini)' }], default: 'openai', showIf: 'useAI' },
@@ -218,7 +219,7 @@ async function executeAction(profileId, actionId, rawConfig) {
     case 'watch-reels': return window.api.watchReels(profileId, { maxReels: c.maxReels || 20, likeReels: c.likeReels || false, delayMin: c.delayMin, delayMax: c.delayMax });
     case 'stories': return window.api.autoViewStories(profileId, { targetUser: c.targetUser, delayMin: c.delayMin, delayMax: c.delayMax });
     case 'visit': return window.api.autoVisitProfiles(profileId, { usernames: c.usernames || [], delayMin: c.delayMin, delayMax: c.delayMax });
-    case 'comment': return window.api.autoComment(profileId, { targetUser: c.targetUser, comments: c.comments || [], maxComments: c.maxComments || 5, delayMin: c.delayMin, delayMax: c.delayMax });
+    case 'comment': return window.api.autoComment(profileId, { postUrl: c.postUrl || '', targetUser: c.targetUser, comments: c.comments || [], maxComments: c.maxComments || 5, delayMin: c.delayMin, delayMax: c.delayMax });
     case 'send-dm': return window.api.sendDM(profileId, { targetUsers: c.targetUsers || [], message: c.dmMessage || '', delayMin: c.delayMin, delayMax: c.delayMax });
     case 'upload-post': return window.api.uploadPost(profileId, { imagePath: c.imagePath || '', caption: c.caption || '' });
     case 'edit-profile': return window.api.editProfileIG(profileId, { photoFolder: c.photoFolder || '', names: c.names || '', bios: c.bios || '', newWebsite: c.newWebsite || '' });
@@ -354,6 +355,7 @@ function ConfigFields({ actionId, config, onChange }) {
               placeholder={f.placeholder || ''}
               className={INPUT_CLASS + (f.mono ? ' font-mono' : '')}
             />
+            {f.hint && <p className="text-xs text-trust-muted mt-1">{f.hint}</p>}
           </div>
         );
       })}

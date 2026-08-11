@@ -465,6 +465,55 @@ async function autoComment(profileId, config) {
 
     if (comments.length === 0) throw new Error('Se necesita al menos un comentario');
 
+    // Escribe UN comentario en el post/reel que esté abierto actualmente
+    const commentBoxSel = 'textarea[aria-label*="coment" i], textarea[aria-label*="comment" i], textarea[placeholder*="coment" i], textarea[placeholder*="comment" i], textarea[aria-label*="Agrega" i], textarea[aria-label*="Add a comment" i]';
+    const postCommentOnCurrent = async () => {
+      const comment = comments[Math.floor(Math.random() * comments.length)];
+      let commentInput = page.locator(commentBoxSel).first();
+      // Si no está visible, click en el ícono de comentar para abrir la caja
+      if (!(await commentInput.isVisible({ timeout: 3000 }).catch(() => false))) {
+        await page.locator('svg[aria-label="Comentario"], svg[aria-label="Comment"]').first().click({ timeout: 4000 }).catch(() => {});
+        await page.waitForTimeout(1500);
+        commentInput = page.locator(commentBoxSel).first();
+      }
+      await commentInput.click({ timeout: 6000 });
+      await page.waitForTimeout(randomDelay(500, 1000));
+      for (const char of comment) {
+        await commentInput.pressSequentially(char, { delay: randomDelay(30, 100) });
+      }
+      await page.waitForTimeout(randomDelay(500, 1500));
+      // Publicar: botón "Publicar"/"Post" o Enter como respaldo
+      const postBtn = page.locator('div[role="button"]:has-text("Publicar"), div[role="button"]:has-text("Post"), button:has-text("Publicar"), button:has-text("Post")').first();
+      if (await postBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await postBtn.click().catch(() => {});
+      } else {
+        await commentInput.press('Enter').catch(() => {});
+      }
+    };
+
+    // ── MODO POST ESPECÍFICO: si pegan el link de un post/reel, comentar UNA vez ahí ──
+    let postUrl = (config.postUrl || '').trim();
+    // Acepta posts (/p/), reels (/reel/ y /reels/) e IGTV (/tv/)
+    const isPostUrl = /instagram\.com\/(p|reel|reels|tv)\//i.test(postUrl);
+    // Los reels NO tienen caja de comentario inline; se abren como /p/ (misma publicación)
+    postUrl = postUrl.replace(/instagram\.com\/(reels?|tv)\//i, 'instagram.com/p/');
+    if (isPostUrl) {
+      emit(profileId, 'start', { type: 'auto-comment', target: postUrl });
+      await page.goto(postUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.waitForTimeout(randomDelay(3000, 4500));
+      try {
+        await postCommentOnCurrent();
+        commented = 1;
+        await page.waitForTimeout(randomDelay(2000, 4000));
+      } catch (e) {
+        emit(profileId, 'error', { type: 'auto-comment', error: 'No se pudo comentar en el post: ' + e.message });
+      }
+      emit(profileId, 'done', { type: 'auto-comment', commented, target: postUrl });
+      return { commented };
+    }
+
+    if (!targetUser) throw new Error('Pega el link de un post o pon un perfil objetivo (@usuario)');
+
     emit(profileId, 'start', { type: 'auto-comment', target: targetUser });
 
     await page.goto(`https://www.instagram.com/${targetUser}/`, {
