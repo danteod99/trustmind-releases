@@ -25,7 +25,7 @@ if (app.isPackaged) {
   app.commandLine.appendSwitch('disable-features', 'DebugMode');
 }
 const { initDatabase, getDb } = require('./src/db/database');
-const { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey, setCaptchaProvider, getCaptchaProvider } = require('./src/browser/manager');
+const { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey, setCaptchaProvider, getCaptchaProvider, setCftProgressCallback } = require('./src/browser/manager');
 const {
   autoLike, autoFollow, autoUnfollow, autoViewStories,
   autoVisitProfiles, autoComment, extractFollowers,
@@ -254,6 +254,11 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+
+  // Progreso de descarga de Chrome for Testing → renderer
+  setCftProgressCallback((data) => {
+    if (mainWindow) mainWindow.webContents.send('cft:progress', data);
+  });
 
   // App version
   ipcMain.handle('app:version', () => app.getVersion());
@@ -854,6 +859,15 @@ ipcMain.handle('dialog:select-files', async (_, opts = {}) => {
   });
   if (result.canceled || !result.filePaths.length) return [];
   return result.filePaths;
+});
+
+ipcMain.handle('dialog:select-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Selecciona la carpeta de fotos',
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
 });
 
 ipcMain.handle('profiles:list', () => {
@@ -1779,22 +1793,34 @@ ipcMain.handle('fb:warmup', async (_, profileId, options) => {
 function aiRequest(provider, apiKey, prompt) {
   return new Promise((resolve, reject) => {
     const isAnthropic = provider === 'anthropic';
-    const options = {
-      hostname: isAnthropic ? 'api.anthropic.com' : 'api.openai.com',
-      port: 443,
-      path: isAnthropic ? '/v1/messages' : '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(isAnthropic
-          ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
-          : { 'Authorization': `Bearer ${apiKey}` }),
-      },
-    };
-
-    const body = isAnthropic
-      ? JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 150, messages: [{ role: 'user', content: prompt }] })
-      : JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 150, messages: [{ role: 'user', content: prompt }] });
+    const isGemini = provider === 'gemini';
+    let options, body;
+    if (isGemini) {
+      options = {
+        hostname: 'generativelanguage.googleapis.com',
+        port: 443,
+        path: '/v1beta/models/gemini-2.0-flash:generateContent',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      };
+      body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 150 } });
+    } else {
+      options = {
+        hostname: isAnthropic ? 'api.anthropic.com' : 'api.openai.com',
+        port: 443,
+        path: isAnthropic ? '/v1/messages' : '/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(isAnthropic
+            ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+            : { 'Authorization': `Bearer ${apiKey}` }),
+        },
+      };
+      body = isAnthropic
+        ? JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 150, messages: [{ role: 'user', content: prompt }] })
+        : JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 150, messages: [{ role: 'user', content: prompt }] });
+    }
 
     const req = https.request(options, (res) => {
       let data = '';
@@ -1804,6 +1830,8 @@ function aiRequest(provider, apiKey, prompt) {
           const json = JSON.parse(data);
           if (isAnthropic) {
             resolve(json.content?.[0]?.text || '');
+          } else if (isGemini) {
+            resolve(json.candidates?.[0]?.content?.parts?.[0]?.text || '');
           } else {
             resolve(json.choices?.[0]?.message?.content || '');
           }

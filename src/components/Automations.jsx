@@ -17,7 +17,7 @@ const ACTIONS = [
   { id: 'comment', name: 'Comentar', icon: '💬', color: 'text-trust-yellow', desc: 'Comentar en posts' },
   { id: 'send-dm', name: 'Enviar DM', icon: '✉', color: 'text-green-500', desc: 'Enviar mensaje directo' },
   { id: 'upload-post', name: 'Subir Post', icon: '↑', color: 'text-indigo-500', desc: 'Subir foto/video' },
-  { id: 'edit-profile', name: 'Editar Bio', icon: 'Aa', color: 'text-teal-500', desc: 'Editar nombre, bio y website' },
+  { id: 'edit-profile', name: 'Editar Perfil', icon: 'Aa', color: 'text-teal-500', desc: 'Cambiar foto, nombre, bio y website' },
   { id: 'share-post', name: 'Compartir Post', icon: '↪', color: 'text-sky-500', desc: 'Compartir post via DM' },
   { id: 'buff-post', name: 'Buff Post', icon: '⬆', color: 'text-amber-500', desc: 'Like/comment desde todas las cuentas' },
   { id: 'follow-suggestions', name: 'Follow Sugeridos', icon: '✦', color: 'text-violet-500', desc: 'Seguir cuentas sugeridas' },
@@ -90,7 +90,7 @@ const ACTION_FIELDS = {
     { key: 'targetUser', label: 'Perfil objetivo', type: 'text', placeholder: '@usuario' },
     { key: 'useAI', label: 'Generar comentarios con IA', type: 'checkbox', default: false },
     { key: 'aiApiKey', label: 'API Key (OpenAI o Anthropic)', type: 'text', placeholder: 'sk-...', mono: true, showIf: 'useAI' },
-    { key: 'aiProvider', label: 'Proveedor IA', type: 'select', options: [{ value: 'openai', label: 'OpenAI (GPT)' }, { value: 'anthropic', label: 'Anthropic (Claude)' }], default: 'openai', showIf: 'useAI' },
+    { key: 'aiProvider', label: 'Proveedor IA', type: 'select', options: [{ value: 'openai', label: 'OpenAI (GPT)' }, { value: 'anthropic', label: 'Anthropic (Claude)' }, { value: 'gemini', label: 'Google (Gemini)' }], default: 'openai', showIf: 'useAI' },
     { key: 'aiPrompt', label: 'Instruccion para la IA', type: 'textarea', placeholder: 'Genera un comentario corto, positivo y natural para un post de Instagram sobre {tema}. Maximo 1 frase. No uses emojis excesivos. Varia el estilo.', rows: 3, showIf: 'useAI' },
     { key: 'aiLanguage', label: 'Idioma', type: 'select', options: [{ value: 'es', label: 'Español' }, { value: 'en', label: 'Ingles' }, { value: 'pt', label: 'Portugues' }], default: 'es', showIf: 'useAI' },
     { key: 'comments', label: 'Comentarios manuales (uno por linea, se elige al azar)', type: 'textarea', placeholder: 'Que buena foto!\nMe encanta\nIncreible contenido', rows: 5, hideIf: 'useAI' },
@@ -102,7 +102,7 @@ const ACTION_FIELDS = {
     { key: 'dmUsers', label: 'Usuarios (uno por linea)', type: 'textarea', placeholder: '@usuario1\n@usuario2', rows: 5 },
     { key: 'useAI', label: 'Generar mensaje con IA', type: 'checkbox', default: false },
     { key: 'aiApiKey', label: 'API Key (OpenAI o Anthropic)', type: 'text', placeholder: 'sk-...', mono: true, showIf: 'useAI' },
-    { key: 'aiProvider', label: 'Proveedor IA', type: 'select', options: [{ value: 'openai', label: 'OpenAI (GPT)' }, { value: 'anthropic', label: 'Anthropic (Claude)' }], default: 'openai', showIf: 'useAI' },
+    { key: 'aiProvider', label: 'Proveedor IA', type: 'select', options: [{ value: 'openai', label: 'OpenAI (GPT)' }, { value: 'anthropic', label: 'Anthropic (Claude)' }, { value: 'gemini', label: 'Google (Gemini)' }], default: 'openai', showIf: 'useAI' },
     { key: 'aiPrompt', label: 'Instruccion para la IA', type: 'textarea', placeholder: 'Genera un DM personalizado para {nombre}. Tono amigable, profesional. Ofrecele {producto}. Maximo 2 frases.', rows: 3, showIf: 'useAI' },
     { key: 'dmMessage', label: 'Mensaje manual (usa {nombre} como variable)', type: 'textarea', placeholder: 'Hola {nombre}! Me interesa tu contenido...', rows: 3, hideIf: 'useAI' },
     { key: 'delayMin', label: 'Delay minimo (seg)', type: 'number', min: 1, max: 120, default: 15 },
@@ -113,9 +113,10 @@ const ACTION_FIELDS = {
     { key: 'caption', label: 'Caption/Descripcion', type: 'textarea', placeholder: 'Escribe el caption del post...', rows: 3 },
   ],
   'edit-profile': [
-    { key: 'newName', label: 'Nuevo nombre', type: 'text', placeholder: 'Dejar vacio para no cambiar' },
-    { key: 'newBio', label: 'Nueva bio', type: 'textarea', placeholder: 'Dejar vacio para no cambiar', rows: 3 },
-    { key: 'newWebsite', label: 'Nuevo website', type: 'text', placeholder: 'https://...' },
+    { key: 'photoFolder', label: 'Carpeta de fotos de perfil', type: 'folder', placeholder: 'Elige una carpeta con varias fotos', hint: 'Cada cuenta agarra una foto DISTINTA al azar de la carpeta. Deja vacio para no cambiar la foto.' },
+    { key: 'names', label: 'Nombres (uno por linea, se elige al azar)', type: 'textarea', placeholder: 'Maria Lopez\nCarlos Ruiz\nAna Torres', rows: 4, hint: 'Cada cuenta agarra un nombre distinto. Deja vacio para no cambiar el nombre.' },
+    { key: 'bios', label: 'Bios (una por linea, se elige al azar)', type: 'textarea', placeholder: 'Amante del cafe ☕\nViajera 🌎\nEmprendedora', rows: 4, hint: 'Cada cuenta agarra una bio distinta. Deja vacio para no cambiar la bio.' },
+    { key: 'newWebsite', label: 'Website (igual para todas)', type: 'text', placeholder: 'https://... (opcional)' },
   ],
   'share-post': [
     { key: 'postUrl', label: 'URL del post', type: 'text', placeholder: 'https://www.instagram.com/p/...', mono: true },
@@ -220,7 +221,7 @@ async function executeAction(profileId, actionId, rawConfig) {
     case 'comment': return window.api.autoComment(profileId, { targetUser: c.targetUser, comments: c.comments || [], maxComments: c.maxComments || 5, delayMin: c.delayMin, delayMax: c.delayMax });
     case 'send-dm': return window.api.sendDM(profileId, { targetUsers: c.targetUsers || [], message: c.dmMessage || '', delayMin: c.delayMin, delayMax: c.delayMax });
     case 'upload-post': return window.api.uploadPost(profileId, { imagePath: c.imagePath || '', caption: c.caption || '' });
-    case 'edit-profile': return window.api.editProfileIG(profileId, { newName: c.newName || '', newBio: c.newBio || '', newWebsite: c.newWebsite || '' });
+    case 'edit-profile': return window.api.editProfileIG(profileId, { photoFolder: c.photoFolder || '', names: c.names || '', bios: c.bios || '', newWebsite: c.newWebsite || '' });
     case 'share-post': return window.api.sharePost(profileId, { postUrl: c.postUrl || '', targetUsers: c.targetUsers || [] });
     case 'buff-post': return window.api.buffPost(profileId, { postUrl: c.postUrl || '', action: c.buffAction || 'like', comment: c.buffComment || '' });
     case 'follow-suggestions': return window.api.followSuggestions(profileId, { maxFollows: c.maxFollows || 10, delayMin: c.delayMin, delayMax: c.delayMax });
@@ -290,6 +291,28 @@ function ConfigFields({ actionId, config, onChange }) {
             </div>
           );
         }
+        if (f.type === 'folder') {
+          return (
+            <div key={f.key}>
+              <label className={LABEL_CLASS}>{f.label}</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={config[f.key] || ''}
+                  onChange={(e) => update(f.key, e.target.value)}
+                  placeholder={f.placeholder || ''}
+                  className={INPUT_CLASS + ' flex-1'}
+                />
+                <button
+                  type="button"
+                  onClick={async () => { const dir = await window.api.selectFolder?.(); if (dir) update(f.key, dir); }}
+                  className="px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap bg-trust-surface border border-trust-border text-trust-text hover:border-trust-accent"
+                >📁 Elegir carpeta</button>
+              </div>
+              {f.hint && <p className="text-xs text-trust-muted mt-1">{f.hint}</p>}
+            </div>
+          );
+        }
         if (f.type === 'textarea') {
           return (
             <div key={f.key}>
@@ -301,6 +324,7 @@ function ConfigFields({ actionId, config, onChange }) {
                 rows={f.rows || 3}
                 className={INPUT_CLASS + ' resize-none' + (f.mono ? ' font-mono' : '')}
               />
+              {f.hint && <p className="text-xs text-trust-muted mt-1">{f.hint}</p>}
             </div>
           );
         }

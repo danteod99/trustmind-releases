@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   // External links
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  selectFolder: () => ipcRenderer.invoke('dialog:select-folder'),
 
   // Native file picker
   selectFiles: (opts) => ipcRenderer.invoke('dialog:select-files', opts),
@@ -158,6 +159,9 @@ contextBridge.exposeInMainWorld('api', {
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   openReleaseDownload: () => ipcRenderer.invoke('updater:open-release'),
+  // Descarga de Chrome for Testing (motor de captcha)
+  onCftProgress: (cb) => { ipcRenderer.on('cft:progress', (_e, data) => cb(data)); },
+
   onUpdateAvailable: (cb) => { ipcRenderer.on('updater:update-available', (_e, info) => cb(info)); },
   onUpdateDownloadProgress: (cb) => { ipcRenderer.on('updater:download-progress', (_e, p) => cb(p)); },
   onUpdateDownloaded: (cb) => { ipcRenderer.on('updater:update-downloaded', (_e, info) => cb(info)); },

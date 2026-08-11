@@ -1,4 +1,16 @@
 const { getActiveBrowsers } = require('./manager');
+const fs = require('fs');
+const path = require('path');
+
+// Elige una imagen AL AZAR de una carpeta (para foto de perfil distinta por cuenta).
+function pickRandomImage(folder) {
+  try {
+    if (!folder || !fs.existsSync(folder)) return null;
+    const files = fs.readdirSync(folder).filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
+    if (!files.length) return null;
+    return path.join(folder, files[Math.floor(Math.random() * files.length)]);
+  } catch { return null; }
+}
 
 // Active automation tasks: Map<profileId, { type, running, cancel }>
 const activeAutomations = new Map();
@@ -1085,7 +1097,15 @@ async function uploadPost(profileId, config) {
 // ─── Editar Bio/Nombre Masivo ──────────────────────────────────────
 
 async function editProfile(profileId, config) {
-  const { newName = '', newBio = '', newWebsite = '' } = config;
+  let { newName = '', newBio = '', newWebsite = '' } = config;
+  // Nombre y bio pueden venir como LISTA (una por línea) → cada cuenta agarra una
+  // distinta al azar, para que los perfiles no queden todos iguales.
+  const pickLine = (txt) => {
+    const arr = String(txt || '').split('\n').map((s) => s.trim()).filter(Boolean);
+    return arr.length ? arr[Math.floor(Math.random() * arr.length)] : '';
+  };
+  if (config.names) newName = pickLine(config.names);
+  if (config.bios) newBio = pickLine(config.bios);
   const task = { type: 'edit-profile', running: true, cancel: () => {} };
   activeAutomations.set(profileId, task);
 
@@ -1097,6 +1117,28 @@ async function editProfile(profileId, config) {
 
     await page.goto('https://www.instagram.com/accounts/edit/', { waitUntil: 'load', timeout: 15000 });
     await page.waitForTimeout(randomDelay(3000, 5000));
+
+    // Cambiar foto de perfil (una foto distinta por cuenta, tomada al azar de la carpeta)
+    if (config.photoFolder) {
+      const img = pickRandomImage(config.photoFolder);
+      if (img) {
+        try {
+          // Abrir el selector de foto (botón "Cambiar la foto del perfil")
+          const changeBtn = page.locator(
+            'button:has-text("Cambiar la foto"), button:has-text("Change profile photo"), button:has-text("Cambiar foto")'
+          ).first();
+          await changeBtn.click({ timeout: 4000 }).catch(() => {});
+          await page.waitForTimeout(1200);
+          // Subir el archivo al input file (aparece tras click, o ya existe oculto)
+          const fileInput = page.locator('input[type="file"]').first();
+          await fileInput.setInputFiles(img, { timeout: 5000 });
+          await page.waitForTimeout(randomDelay(3000, 5000));
+          console.log(`[EditProfile] Foto de perfil cambiada: ${path.basename(img)}`);
+        } catch (e) {
+          console.log(`[EditProfile] No se pudo cambiar la foto: ${e.message}`);
+        }
+      }
+    }
 
     // Edit name
     if (newName) {

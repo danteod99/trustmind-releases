@@ -14,6 +14,11 @@ const activeBrowsers = new Map();
 let capsolverApiKey = '';
 let captchaProvider = 'capsolver';
 
+// Chrome for Testing (necesario para cargar la extensión de captcha)
+const { ensureChromeForTesting } = require('./chrome-for-testing');
+let cftProgressCallback = null;
+function setCftProgressCallback(cb) { cftProgressCallback = cb; }
+
 // ─── Grid Layout for Browser Windows ────────────────────────────────
 // Mobile-sized windows arranged in a grid so multiple are visible at once
 const BROWSER_WIDTH = 360;
@@ -364,13 +369,6 @@ async function launchBrowser(profile) {
     throw new Error('Este perfil ya tiene un navegador abierto');
   }
 
-  const executablePath = findChromiumPath();
-  if (!executablePath) {
-    throw new Error(
-      'No se encontr\u00f3 Chrome/Chromium instalado. Instala Google Chrome para continuar.'
-    );
-  }
-
   const profileDir = getProfileDir(profile.id);
 
   // Persistent user-agent: use stored UA from profile, or pick a random one
@@ -392,7 +390,10 @@ async function launchBrowser(profile) {
   // En produccion el codigo vive dentro de app.asar (read-only): Chrome NO puede
   // cargar una extension desde asar ni podemos escribir config.json ahi. Por eso
   // copiamos la extension a un directorio escribible (userData) y la cargamos desde ahi.
-  const capsolverSrc = path.join(__dirname, 'extensions', 'capsolver');
+  // La extensión vive en src/extensions/capsolver; __dirname es src/browser,
+  // por eso hay que subir un nivel (.. ). Antes apuntaba a src/browser/extensions
+  // (inexistente) → la extensión NUNCA se cargaba y ningún captcha se resolvía.
+  const capsolverSrc = path.join(__dirname, '..', 'extensions', 'capsolver');
   const hasCapsolverExt = fs.existsSync(path.join(capsolverSrc, 'manifest.json'));
   let capsolverPath = capsolverSrc;
   if (hasCapsolverExt) {
@@ -407,6 +408,34 @@ async function launchBrowser(profile) {
     } catch (err) {
       console.log('[CapSolver] No se pudo preparar la extension en userData:', err.message);
     }
+  }
+
+  // Selección del navegador:
+  // - Si el captcha-solver está activo (extensión + API key), hay que usar
+  //   Chrome for Testing, porque el Chrome del sistema (v137+) ya no carga
+  //   extensiones por línea de comandos. Se descarga solo la primera vez.
+  // - Si no, usamos el Chrome del sistema (más liviano, no requiere descarga).
+  const captchaActivo = hasCapsolverExt && !!capsolverApiKey;
+  let executablePath = null;
+  if (captchaActivo) {
+    try {
+      executablePath = await ensureChromeForTesting((pct, downloaded, total) => {
+        if (typeof cftProgressCallback === 'function') {
+          cftProgressCallback({ profileId: profile.id, pct, downloaded, total });
+        }
+      });
+    } catch (err) {
+      console.warn('[CfT] Falló Chrome for Testing, usando Chrome del sistema:', err.message);
+      executablePath = null; // fallback abajo
+    }
+  }
+  if (!executablePath) {
+    executablePath = findChromiumPath();
+  }
+  if (!executablePath) {
+    throw new Error(
+      'No se encontró Chrome/Chromium instalado. Instala Google Chrome para continuar.'
+    );
   }
 
   const launchOptions = {
@@ -480,7 +509,9 @@ async function launchBrowser(profile) {
     locale: 'es-419',
     timezoneId: profile.timezone || 'America/Lima',
     colorScheme: 'dark',
-    ignoreDefaultArgs: ['--enable-automation'],
+    // Quitamos --disable-extensions solo cuando vamos a cargar la extensión de
+    // captcha, si no Chrome la ignora aunque usemos --load-extension.
+    ignoreDefaultArgs: captchaActivo ? ['--enable-automation', '--disable-extensions'] : ['--enable-automation'],
   });
 
   // Generate unique fingerprint for this profile
@@ -1240,4 +1271,4 @@ function getCaptchaProvider() {
   return captchaProvider;
 }
 
-module.exports = { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey, setCaptchaProvider, getCaptchaProvider };
+module.exports = { launchBrowser, closeBrowser, getActiveBrowsers, onLoginSuccess, onLoginFail, setCapsolverKey, getCapsolverKey, setCaptchaProvider, getCaptchaProvider, setCftProgressCallback };

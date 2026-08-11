@@ -1,7 +1,7 @@
 {
   "name": "trustmind-desktop",
-  "version": "1.6.6",
-  "description": "TrustInsta Desktop \u2014 Instagram Multi-Account Manager with Antidetect Browser",
+  "version": "1.6.7",
+  "description": "TrustInsta Desktop — Instagram Multi-Account Manager with Antidetect Browser",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -29,6 +29,7 @@
     "wait-on": "^8.0.3"
   },
   "dependencies": {
+    "@puppeteer/browsers": "^3.0.6",
     "@supabase/supabase-js": "^2.100.1",
     "better-sqlite3": "^11.9.1",
     "electron-updater": "^6.8.3",
