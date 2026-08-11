@@ -1,18 +1,83 @@
 {
   "name": "trustmind-desktop",
   "version": "1.6.8",
-  "description": "TrustMind Desktop — Multi-Account Browser Manager with Proxy Support",
+  "description": "TrustInsta Desktop — Instagram Multi-Account Manager with Antidetect Browser",
   "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:renderer": "vite",
+    "build:renderer": "vite build",
+    "rebuild": "electron-builder install-app-deps",
+    "postinstall": "npm run rebuild",
+    "build": "vite build && electron-builder",
+    "pack": "vite build && electron-builder --dir"
+  },
   "author": "TrustMind",
   "license": "UNLICENSED",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
+    "electron": "^35.1.2",
+    "electron-builder": "^26.0.12",
+    "electron-rebuild": "^3.2.9",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "terser": "^5.46.1",
+    "vite": "^6.3.5",
+    "wait-on": "^8.0.3"
+  },
   "dependencies": {
+    "@puppeteer/browsers": "^3.0.6",
     "@supabase/supabase-js": "^2.100.1",
     "better-sqlite3": "^11.9.1",
+    "electron-updater": "^6.8.3",
     "lucide-react": "^0.577.0",
     "node-machine-id": "^1.1.12",
     "playwright-core": "^1.52.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "uuid": "^11.1.0"
+  },
+  "build": {
+    "appId": "com.trustmind.desktop",
+    "productName": "TrustInsta Desktop",
+    "files": [
+      "main.js",
+      "preload.js",
+      "dist/**/*",
+      "src/db/**/*",
+      "src/browser/**/*",
+      "src/auth/**/*",
+      "src/payments/**/*",
+      "src/extensions/**/*"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "danteod99",
+      "repo": "trustmind-releases"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.icns",
+      "artifactName": "TrustInsta-Desktop-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "artifactName": "TrustInsta-Desktop-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }
